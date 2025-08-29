@@ -3,6 +3,9 @@
 
 #include <cstring>
 #include <sys/mman.h>
+#include <unistd.h>
+#include <utility>
+#include <limits>
 
 #if defined(__APPLE__)
 #include <pthread.h>
@@ -25,13 +28,30 @@ JitMemory::~JitMemory() {
     }
 }
 
+JitMemory::JitMemory(JitMemory&& other) noexcept
+    : memory_(std::exchange(other.memory_, nullptr)), size_(std::exchange(other.size_, 0)),
+      executable_(std::exchange(other.executable_, false)) {}
+
+JitMemory& JitMemory::operator=(JitMemory&& other) noexcept {
+    if (this != &other) {
+        if (memory_) munmap(memory_, size_);
+        memory_ = std::exchange(other.memory_, nullptr);
+        size_ = std::exchange(other.size_, 0);
+        executable_ = std::exchange(other.executable_, false);
+    }
+    return *this;
+}
+
 Status JitMemory::allocate(usize size) noexcept {
     if (size == 0) {
         return Status(StatusCode::InvalidArgument, "Size must be > 0");
     }
     
     // Round up to page size
-    usize page_size = 4096;
+    usize page_size = static_cast<usize>(sysconf(_SC_PAGESIZE));
+    if (size > std::numeric_limits<usize>::max() - page_size) {
+        return Status(StatusCode::InvalidArgument, "Code allocation size overflow");
+    }
     usize alloc_size = ((size + page_size - 1) / page_size) * page_size;
     
 #if defined(__APPLE__) && defined(__aarch64__)
@@ -62,7 +82,7 @@ Status JitMemory::allocate(usize size) noexcept {
 }
 
 Status JitMemory::write(const u8* code, usize size) noexcept {
-    if (!memory_ || size > size_) {
+    if (!memory_ || !code || size == 0 || size > size_ || executable_) {
         return Status(StatusCode::InvalidArgument, "Invalid memory or size");
     }
     

@@ -75,6 +75,10 @@ enum class Opcode : u16 {
     ExtendU32ToU64, // Zero extend u32 to u64
     TruncI64ToI32,  // Truncate i64 to i32
     
+    Phi,
+    U64ToI64,      // Checked conversion
+    NegU64,        // Checked unsigned magnitude to negative signed value
+
     // Aggregates
     Count,          // Count rows
     SumI64,         // Sum i64 values

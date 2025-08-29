@@ -1,3 +1,4 @@
+#include <charconv>
 // VectorTick Inspect Application
 // Inspects and dumps segment file metadata, schema, zone maps, and rows
 
@@ -68,7 +69,10 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "-c") == 0) {
             validate_integrity = true;
         } else if (strcmp(argv[i], "-d") == 0 && i + 1 < argc) {
-            dump_rows = std::stoull(argv[++i]);
+            const char* value = argv[++i];
+            auto end = value + std::strlen(value);
+            auto [parsed, error] = std::from_chars(value,end,dump_rows);
+            if (error != std::errc{} || parsed != end) { std::cerr << "Invalid row count\n"; return 1; }
         } else if (strcmp(argv[i], "-v") == 0) {
             show_schema = true;
             show_metadata = true;

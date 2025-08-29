@@ -1,4 +1,5 @@
 #include "vectortick/ir/builder.hpp"
+#include "vectortick/query/type_checker.hpp"
 #include <cassert>
 
 namespace vectortick {
@@ -249,127 +250,99 @@ void Builder::create_branch(ValueId cond, BasicBlock* true_block, BasicBlock* fa
     current_block_->append(std::move(instr));
 }
 
-namespace {
-inline bool resolve_column_info(std::string_view name, u32& out_id, Type& out_type) noexcept {
-    auto ieq = [](std::string_view a, std::string_view b) {
-        if (a.size() != b.size()) return false;
-        for (size_t i = 0; i < a.size(); ++i) {
-            if (std::toupper(static_cast<unsigned char>(a[i])) !=
-                std::toupper(static_cast<unsigned char>(b[i]))) return false;
-        }
-        return true;
-    };
-    
-    if (ieq(name, "exchange_ts_ns") || ieq(name, "exchange_ts")) {
-        out_id = 0; out_type = Type::U64; return true;
-    } else if (ieq(name, "receive_ts_ns") || ieq(name, "receive_ts")) {
-        out_id = 1; out_type = Type::U64; return true;
-    } else if (ieq(name, "sequence") || ieq(name, "seq")) {
-        out_id = 2; out_type = Type::U64; return true;
-    } else if (ieq(name, "instrument_id") || ieq(name, "symbol") || ieq(name, "instrument")) {
-        out_id = 3; out_type = Type::U32; return true;
-    } else if (ieq(name, "event_type")) {
-        out_id = 4; out_type = Type::U8; return true;
-    } else if (ieq(name, "side")) {
-        out_id = 5; out_type = Type::U8; return true;
-    } else if (ieq(name, "flags")) {
-        out_id = 6; out_type = Type::U16; return true;
-    } else if (ieq(name, "price_ticks") || ieq(name, "price")) {
-        out_id = 7; out_type = Type::I64; return true;
-    } else if (ieq(name, "quantity") || ieq(name, "qty")) {
-        out_id = 8; out_type = Type::U32; return true;
-    } else if (ieq(name, "venue_id") || ieq(name, "venue")) {
-        out_id = 9; out_type = Type::U16; return true;
-    } else if (ieq(name, "source_id") || ieq(name, "source")) {
-        out_id = 10; out_type = Type::U16; return true;
-    } else if (ieq(name, "trade_or_order_id") || ieq(name, "trade_id") || ieq(name, "order_id")) {
-        out_id = 11; out_type = Type::U64; return true;
-    }
-    return false;
-}
-} // namespace
-
 ValueId Builder::lower_expression(const query::Expression* expr) {
-    if (!expr) return 0;
-    
+    using query::TokenType;
+    if (!expr || !function_) return 0;
+    auto unary = [&](Opcode op, ValueId v, Type type) {
+        auto out = function_->create_value(type);
+        current_block_->append(std::make_unique<UnaryOp>(op, v, out, type)); return out;
+    };
     switch (expr->type) {
-        case query::ExprType::Literal: {
-            auto lit = static_cast<const query::LiteralExpr*>(expr);
-            return create_const_u64(lit->value);
-        }
-        
+        case query::ExprType::Literal:
+            return create_const_u64(static_cast<const query::LiteralExpr*>(expr)->value);
         case query::ExprType::ColumnRef: {
+            vts1::ColumnID id;
             auto col = static_cast<const query::ColumnRefExpr*>(expr);
-            u32 column_id = 0;
-            Type col_type = Type::U64;
-            if (!resolve_column_info(col->name, column_id, col_type)) {
-                column_id = 0;
-                col_type = Type::U64;
-            }
-            ValueId row_idx = function_->parameters()[0];  // First param is row index
-            return create_load_column(column_id, row_idx, col_type);
+            if (!query::TypeChecker::resolve_column(col->name, id) || function_->parameters().empty()) return 0;
+            return create_load_column(static_cast<u32>(id), function_->parameters()[0], infer_type(expr));
         }
-        
-        case query::ExprType::BinaryOp: {
-            auto binop = static_cast<const query::BinaryOpExpr*>(expr);
-            ValueId lhs = lower_expression(binop->left.get());
-            ValueId rhs = lower_expression(binop->right.get());
-            Type lt = infer_type(binop->left.get());
-            Type rt = infer_type(binop->right.get());
-            Type type = (lt == Type::I64 || rt == Type::I64) ? Type::I64 : Type::U64;
-            
-            switch (binop->op) {
-                case query::TokenType::Plus: return create_add(lhs, rhs, type);
-                case query::TokenType::Minus: return create_sub(lhs, rhs, type);
-                case query::TokenType::Star: return create_mul(lhs, rhs, type);
-                case query::TokenType::Slash: return create_div(lhs, rhs, type);
-                case query::TokenType::Percent: return create_mod(lhs, rhs, type);
-                case query::TokenType::Equal: return create_eq(lhs, rhs, type);
-                case query::TokenType::NotEqual: return create_ne(lhs, rhs, type);
-                case query::TokenType::Less: return create_lt(lhs, rhs, type);
-                case query::TokenType::LessEqual: return create_le(lhs, rhs, type);
-                case query::TokenType::Greater: return create_gt(lhs, rhs, type);
-                case query::TokenType::GreaterEqual: return create_ge(lhs, rhs, type);
-                case query::TokenType::And: return create_and(lhs, rhs);
-                case query::TokenType::Or: return create_or(lhs, rhs);
-                case query::TokenType::Amp: return create_bitand(lhs, rhs);
-                case query::TokenType::Pipe: return create_bitor(lhs, rhs);
-                case query::TokenType::Caret: return create_bitxor(lhs, rhs);
-                default: return 0;
-            }
-        }
-        
         case query::ExprType::UnaryOp: {
-            auto unop = static_cast<const query::UnaryOpExpr*>(expr);
-            ValueId operand = lower_expression(unop->operand.get());
-            
-            switch (unop->op) {
-                case query::TokenType::Minus: return create_neg(operand, Type::I64);
-                case query::TokenType::Bang: return create_not(operand);
-                default: return 0;
+            auto un = static_cast<const query::UnaryOpExpr*>(expr);
+            auto v = lower_expression(un->operand.get());
+            if (un->op == TokenType::Bang) return create_not(v);
+            if (un->op == TokenType::Minus) return unary(infer_type(un->operand.get()) == Type::I64 ? Opcode::NegI64 : Opcode::NegU64, v, Type::I64);
+            return 0;
+        }
+        case query::ExprType::BinaryOp: {
+            auto bin = static_cast<const query::BinaryOpExpr*>(expr);
+            auto left = lower_expression(bin->left.get());
+            if (bin->op == TokenType::And || bin->op == TokenType::Or) {
+                auto rhs_block = create_block("logical_rhs");
+                auto short_block = create_block("logical_short");
+                auto merge = create_block("logical_merge");
+                bool is_and = bin->op == TokenType::And;
+                create_branch(left, is_and ? rhs_block : short_block, is_and ? short_block : rhs_block);
+                set_insertion_point(rhs_block);
+                auto right = create_not(create_not(lower_expression(bin->right.get())));
+                auto rhs_end = current_block_; create_jump(merge);
+                set_insertion_point(short_block);
+                auto short_value = create_const_bool(!is_and); create_jump(merge);
+                set_insertion_point(merge);
+                auto result = function_->create_value(Type::I1);
+                current_block_->append(std::make_unique<PhiOp>(std::vector<BasicBlock*>{rhs_end, short_block},
+                    std::vector<ValueId>{right, short_value}, result, Type::I1)); return result;
+            }
+            auto right = lower_expression(bin->right.get());
+            auto lt = infer_type(bin->left.get()), rt = infer_type(bin->right.get());
+            bool ls = lt == Type::I64, rs = rt == Type::I64;
+            bool comparison = bin->op == TokenType::Equal || bin->op == TokenType::NotEqual ||
+                bin->op == TokenType::Less || bin->op == TokenType::LessEqual || bin->op == TokenType::Greater || bin->op == TokenType::GreaterEqual;
+            auto compare = [&](ValueId l, ValueId r, Type t) {
+                auto result = function_->create_value(Type::I1);
+                current_block_->append(std::make_unique<CompareOp>(get_comparison_opcode(bin->op,t), l,r,result)); return result;
+            };
+            if (comparison) {
+                if (ls == rs) return compare(left,right,ls ? Type::I64 : Type::U64);
+                auto negative = create_lt(ls ? left : right, create_const_i64(0), Type::I64);
+                bool neg_answer = bin->op == TokenType::NotEqual ||
+                    (ls && (bin->op == TokenType::Less || bin->op == TokenType::LessEqual)) ||
+                    (rs && (bin->op == TokenType::Greater || bin->op == TokenType::GreaterEqual));
+                auto normal = compare(left,right,Type::U64);
+                return create_select(negative,create_const_bool(neg_answer),normal,Type::I1);
+            }
+            bool bitwise = bin->op == TokenType::Amp || bin->op == TokenType::Pipe || bin->op == TokenType::Caret;
+            if (bitwise) {
+                if (bin->op == TokenType::Amp) return create_bitand(left,right);
+                if (bin->op == TokenType::Pipe) return create_bitor(left,right);
+                return create_bitxor(left,right);
+            }
+            Type type = ls || rs ? Type::I64 : Type::U64;
+            if (type == Type::I64) {
+                if (!ls) left = unary(Opcode::U64ToI64,left,Type::I64);
+                if (!rs) right = unary(Opcode::U64ToI64,right,Type::I64);
+            }
+            switch (bin->op) {
+                case TokenType::Plus:return create_add(left,right,type);
+                case TokenType::Minus:return create_sub(left,right,type);
+                case TokenType::Star:return create_mul(left,right,type);
+                case TokenType::Slash:return create_div(left,right,type);
+                case TokenType::Percent:return create_mod(left,right,type);
+                default:return 0;
             }
         }
-
         case query::ExprType::FunctionCall: {
-            auto fn = static_cast<const query::FunctionCallExpr*>(expr);
-            std::string fname = fn->name;
-            for (char& c : fname) c = std::tolower(static_cast<unsigned char>(c));
-            if (fname == "count") {
-                ValueId row_idx = function_->parameters()[0];
-                return create_count(row_idx);
-            }
-            if (!fn->args.empty()) {
-                ValueId arg = lower_expression(fn->args[0].get());
-                Type atype = infer_type(fn->args[0].get());
-                if (fname == "sum") return create_sum(arg, atype);
-                if (fname == "min") return create_min(arg, atype);
-                if (fname == "max") return create_max(arg, atype);
-            }
+            auto call = static_cast<const query::FunctionCallExpr*>(expr);
+            std::string name = call->name;
+            for (auto& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (name == "count") return create_count(function_->parameters()[0]);
+            if (call->args.size() != 1) return 0;
+            auto v = lower_expression(call->args[0].get()); auto t = infer_type(call->args[0].get());
+            if (name == "sum") return create_sum(v,t == Type::I64 ? Type::I64 : Type::U64);
+            if (name == "min") return create_min(v,t);
+            if (name == "max") return create_max(v,t);
             return 0;
         }
-        
-        default:
-            return 0;
+        default:return 0;
     }
 }
 
@@ -437,47 +410,16 @@ std::unique_ptr<Function> Builder::build_from_query(const query::QueryStmt* stmt
 }
 
 Type Builder::infer_type(const query::Expression* expr) const {
-    if (!expr) return Type::U64;
-    switch (expr->type) {
-        case query::ExprType::Literal:
-            return Type::U64;
-        case query::ExprType::ColumnRef: {
-            auto col = static_cast<const query::ColumnRefExpr*>(expr);
-            u32 cid = 0;
-            Type ctype = Type::U64;
-            if (resolve_column_info(col->name, cid, ctype)) {
-                return ctype;
-            }
-            return Type::U64;
-        }
-        case query::ExprType::BinaryOp: {
-            auto binop = static_cast<const query::BinaryOpExpr*>(expr);
-            switch (binop->op) {
-                case query::TokenType::Equal:
-                case query::TokenType::NotEqual:
-                case query::TokenType::Less:
-                case query::TokenType::LessEqual:
-                case query::TokenType::Greater:
-                case query::TokenType::GreaterEqual:
-                case query::TokenType::And:
-                case query::TokenType::Or:
-                    return Type::I1;
-                default: {
-                    Type lt = infer_type(binop->left.get());
-                    Type rt = infer_type(binop->right.get());
-                    if (lt == Type::I64 || rt == Type::I64) return Type::I64;
-                    return Type::U64;
-                }
-            }
-        }
-        case query::ExprType::UnaryOp: {
-            auto unop = static_cast<const query::UnaryOpExpr*>(expr);
-            if (unop->op == query::TokenType::Bang) return Type::I1;
-            if (unop->op == query::TokenType::Minus) return Type::I64;
-            return infer_type(unop->operand.get());
-        }
-        default:
-            return Type::U64;
+    query::TypeChecker checker;
+    auto type = checker.check_expression(expr);
+    if (!type.ok()) return Type::Void;
+    switch (type.value()) {
+        case vts1::ColumnType::I64:return Type::I64;
+        case vts1::ColumnType::U32:return Type::U32;
+        case vts1::ColumnType::U16:return Type::U16;
+        case vts1::ColumnType::U8:return Type::U8;
+        case vts1::ColumnType::Bool:return Type::I1;
+        default:return Type::U64;
     }
 }
 

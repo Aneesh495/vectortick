@@ -219,7 +219,7 @@ VT_TEST(jit_differential_tests, host_jit_division_modulo_and_zero_safety) {
         VT_ASSERT_EQ(jit::jit_execute(func, &ev).value(), 2ULL);
     }
 
-    // Zero divisor: 100 / 0 = 0, 100 % 0 = 0 (graceful zero, no hardware exception)
+    // Zero divisors propagate explicit native errors without hardware traps.
     {
         ir::Builder builder;
         ir::Function* func = builder.create_function("div_u64_zero");
@@ -229,8 +229,8 @@ VT_TEST(jit_differential_tests, host_jit_division_modulo_and_zero_safety) {
         builder.create_return(q);
 
         auto jit_res = jit::jit_execute(func, &ev);
-        VT_ASSERT(jit_res.ok());
-        VT_ASSERT_EQ(jit_res.value(), 0ULL);
+        VT_ASSERT(!jit_res.ok());
+        VT_ASSERT(!interp.execute(func, &ev).ok());
     }
     {
         ir::Builder builder;
@@ -241,8 +241,8 @@ VT_TEST(jit_differential_tests, host_jit_division_modulo_and_zero_safety) {
         builder.create_return(r);
 
         auto jit_res = jit::jit_execute(func, &ev);
-        VT_ASSERT(jit_res.ok());
-        VT_ASSERT_EQ(jit_res.value(), 0ULL);
+        VT_ASSERT(!jit_res.ok());
+        VT_ASSERT(!interp.execute(func, &ev).ok());
     }
 
     // Signed div & mod: -100 / 7 = -14, -100 % 7 = -2
@@ -283,8 +283,8 @@ VT_TEST(jit_differential_tests, host_jit_division_modulo_and_zero_safety) {
         builder.create_return(q);
 
         auto jit_res = jit::jit_execute(func, &ev);
-        VT_ASSERT(jit_res.ok());
-        VT_ASSERT_EQ(jit_res.value(), 0ULL);
+        VT_ASSERT(!jit_res.ok());
+        VT_ASSERT(!interp.execute(func, &ev).ok());
     }
 
     // Negation

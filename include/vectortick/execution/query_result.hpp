@@ -16,6 +16,11 @@ struct QueryResult {
     u64 rows_scanned{0};
     u64 rows_matched{0};
     u64 execution_time_ns{0};
+    std::string backend;
+    u64 functions_compiled{0};
+    u64 native_invocations{0};
+    u64 rows_evaluated{0};
+    u64 fallback_count{0};
 };
 
 [[nodiscard]] inline const char* column_type_to_string(vts1::ColumnType type) noexcept {

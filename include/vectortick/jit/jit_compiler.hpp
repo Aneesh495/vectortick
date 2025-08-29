@@ -14,7 +14,7 @@ namespace vectortick {
 namespace jit {
 
 // JIT-compiled function pointer type
-using JitFunction = u64 (*)(const void* context);
+using JitFunction = u64 (*)(const void* context, u64* error);
 
 // Memory protection flags
 enum class MemoryProtection : u32 {
@@ -31,6 +31,10 @@ enum class MemoryProtection : u32 {
 class JitMemory {
 public:
     JitMemory();
+    JitMemory(const JitMemory&) = delete;
+    JitMemory& operator=(const JitMemory&) = delete;
+    JitMemory(JitMemory&& other) noexcept;
+    JitMemory& operator=(JitMemory&& other) noexcept;
     ~JitMemory();
     
     // Allocate executable memory
@@ -69,6 +73,8 @@ public:
     // Compile an IR function to native code
     [[nodiscard]] Result<JitFunction> compile(const ir::Function* function) noexcept;
     
+    JitFunction function() noexcept { return memory_.function(); }
+
     // Get the assembler for inspection
     [[nodiscard]] const X86Assembler& assembler() const noexcept { return assembler_; }
     
@@ -107,6 +113,20 @@ private:
     void emit_epilogue() noexcept;
 };
 
+// Compiler instrumentation assumes a compiler-generated function prefix. Raw JIT
+// mappings have no such prefix, so suppress only that check at this boundary.
+[[nodiscard]]
+#if defined(__clang__)
+__attribute__((no_sanitize("function")))
+#endif
+inline Result<u64> invoke_native(JitFunction fn, const void* context) noexcept {
+    if (!fn || !context) return make_error<u64>(StatusCode::InvalidArgument, "Null native function or context");
+    u64 error = 0;
+    u64 value = fn(context, &error);
+    if (error != 0) return make_error<u64>(StatusCode::InternalError, "Native arithmetic error");
+    return value;
+}
+
 // Convenience function to compile and execute
 [[nodiscard]] inline Result<u64> jit_execute(const ir::Function* function, 
                                               const void* context) noexcept {
@@ -117,7 +137,7 @@ private:
     }
     
     JitFunction fn = result.value();
-    return fn(context);
+    return invoke_native(fn, context);
 }
 
 } // namespace jit

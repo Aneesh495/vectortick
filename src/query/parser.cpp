@@ -234,6 +234,7 @@ Result<std::unique_ptr<QueryStmt>> Parser::parse_query() noexcept {
             Token limit_tok = expect(TokenType::IntegerLiteral, "Expected limit value");
             if (has_error_) break;
             query->limit = limit_tok.int_value;
+            if (query->limit == 0) set_error("LIMIT must be positive",limit_tok.line,limit_tok.column);
         }
         else {
             // Unknown clause

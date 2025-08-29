@@ -60,6 +60,11 @@ void print_json(const QueryResult& qres, const std::string& engine, std::ostream
     out << "  \"rows_scanned\": " << qres.rows_scanned << ",\n";
     out << "  \"rows_matched\": " << qres.rows_matched << ",\n";
     out << "  \"execution_time_ns\": " << qres.execution_time_ns << ",\n";
+    out << "  \"observability\": {\"backend\": \"" << qres.backend
+        << "\", \"functions_compiled\": " << qres.functions_compiled
+        << ", \"native_invocations\": " << qres.native_invocations
+        << ", \"rows_evaluated\": " << qres.rows_evaluated
+        << ", \"fallback_count\": " << qres.fallback_count << "},\n";
     out << "  \"columns\": [\n";
     for (usize i = 0; i < qres.column_names.size(); ++i) {
         out << "    {\"name\": \"" << qres.column_names[i] << "\", \"type\": \"";
@@ -105,13 +110,13 @@ int main(int argc, char* argv[]) {
             const char* str = argv[++i];
             size_t len = strlen(str);
             auto [ptr, ec] = std::from_chars(str, str + len, limit_override);
-            if (ec != std::errc{} || ptr != str + len) {
+            if (ec != std::errc{} || ptr != str + len || limit_override == 0) {
                 std::cerr << "Invalid limit value: " << str << "\n";
                 return 1;
             }
         } else if (strcmp(argv[i], "--json") == 0) {
             json_mode = true;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
+            if (i + 1 < argc && argv[i + 1][0] != '-' && (i + 3 < argc || (!segment_file.empty() && !query_str.empty()))) {
                 json_file = argv[++i];
             }
         } else if (strcmp(argv[i], "-v") == 0) {
@@ -122,8 +127,11 @@ int main(int argc, char* argv[]) {
         } else if (argv[i][0] != '-') {
             if (segment_file.empty()) {
                 segment_file = argv[i];
-            } else {
+            } else if (query_str.empty()) {
                 query_str = argv[i];
+            } else {
+                std::cerr << "Too many positional arguments\n";
+                return 1;
             }
         } else {
             std::cerr << "Unknown option: " << argv[i] << "\n";
@@ -145,10 +153,10 @@ int main(int argc, char* argv[]) {
     }
     
     if (verbose) {
-        std::cout << "Segment: " << segment_file << "\n";
-        std::cout << "Engine:  " << engine << "\n";
-        std::cout << "Query:   " << query_str << "\n";
-        std::cout << "----------------------------------------\n";
+        std::cerr << "Segment: " << segment_file << "\n";
+        std::cerr << "Engine:  " << engine << "\n";
+        std::cerr << "Query:   " << query_str << "\n";
+        std::cerr << "----------------------------------------\n";
     }
     
     // Parse query
@@ -200,6 +208,8 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             print_json(qres, engine, out);
+            out.flush();
+            if (!out) { std::cerr << "Failed writing JSON result\n"; return 1; }
         } else {
             print_json(qres, engine, std::cout);
         }

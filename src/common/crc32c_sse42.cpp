@@ -2,9 +2,6 @@
 
 #if defined(__x86_64__) || defined(_M_X64)
 
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC target("sse4.2")
-#endif
 
 #include <nmmintrin.h>
 #include <cstring>

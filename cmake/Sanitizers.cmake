@@ -30,9 +30,9 @@ function(set_sanitizer_flags target)
     endif()
     
     if(ENABLE_UBSAN)
-        target_compile_options(${target} PRIVATE -fsanitize=undefined -fno-sanitize=function)
+        target_compile_options(${target} PRIVATE -fsanitize=undefined)
         if(NOT is_static)
-            target_link_options(${target} PRIVATE -fsanitize=undefined -fno-sanitize=function)
+            target_link_options(${target} PRIVATE -fsanitize=undefined)
         endif()
     endif()
     

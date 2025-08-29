@@ -1,521 +1,286 @@
-#include "vectortick/jit/code_generator.hpp"
-#include "vectortick/ir/instruction.hpp"
-#include <algorithm>
-#include <cstring>
+#include "vectortick/jit/native_plan.hpp"
+#include "vectortick/model/event.hpp"
+#include <limits>
 
-namespace vectortick {
-namespace jit {
-
-Result<std::vector<u8>> X86CodeGenerator::generate(const ir::Function* function) noexcept {
-    if (!function) {
-        return make_error<std::vector<u8>>(StatusCode::InvalidArgument, "Null function");
-    }
-    
-    // Reset state
-    assembler_.clear();
-    value_to_reg_.clear();
-    value_to_slot_.clear();
-    reg_to_value_.clear();
-    remaining_uses_.clear();
-    free_slots_.clear();
-    next_spill_slot_ = 0;
-
-    // Available general-purpose registers:
-    // RAX and RDX are reserved for division/modulo and return.
-    // R12 is reserved for CanonicalEvent context pointer.
-    // RSP, RBP are stack frame pointers.
-    // Registers for variables (11 registers):
-    free_regs_ = {
-        X86Reg::RSI, X86Reg::RDI, X86Reg::R8, X86Reg::R9, X86Reg::R10,
-        X86Reg::R11, X86Reg::RBX, X86Reg::R13, X86Reg::R14, X86Reg::R15,
-        X86Reg::RCX
-    };
-    
-    // Count uses of every operand across all blocks
-    for (usize b = 0; b < function->num_blocks(); ++b) {
-        const ir::BasicBlock* block = function->block(b);
-        for (usize i = 0; i < block->num_instructions(); ++i) {
-            const ir::Instruction* instr = block->instruction(i);
-            for (usize o = 0; o < instr->num_operands(); ++o) {
-                remaining_uses_[instr->operand(o)]++;
-            }
-        }
-    }
-
-    // Map function parameter 0 (row/context pointer) to R12
-    if (function->num_parameters() > 0) {
-        value_to_reg_[function->parameters()[0]] = X86Reg::R12;
-    }
-    
-    // Emit prologue
-    emit_prologue();
-    
-    // Generate code for each block
-    for (usize b = 0; b < function->num_blocks(); ++b) {
-        const ir::BasicBlock* block = function->block(b);
-        
-        for (usize i = 0; i < block->num_instructions(); ++i) {
-            const ir::Instruction* instr = block->instruction(i);
-            auto status = emit_instruction(instr);
-            if (!status.ok()) {
-                return make_error<std::vector<u8>>(status.code(), status.message());
-            }
-        }
-    }
-    
-    // Emit epilogue (in case function doesn't return explicitly)
-    emit_epilogue();
-    
-    // Copy code to vector
-    std::vector<u8> code(assembler_.code());
-    return code;
-}
-
-void X86CodeGenerator::emit_prologue() noexcept {
-    // Save callee-saved registers
-    assembler_.push_r64(X86Reg::RBP);
-    assembler_.mov_r64_r64(X86Reg::RBP, X86Reg::RSP);
-    assembler_.push_r64(X86Reg::RBX);
-    assembler_.push_r64(X86Reg::R12);
-    assembler_.push_r64(X86Reg::R13);
-    assembler_.push_r64(X86Reg::R14);
-    assembler_.push_r64(X86Reg::R15);
-    
-    // Save argument 0 (context pointer) into callee-saved R12
+namespace vectortick::jit {
+Result<std::vector<u8>> X86CodeGenerator::generate(const ir::Function *fn) noexcept {
+    using namespace ir;
 #if defined(_WIN32)
-    assembler_.mov_r64_r64(X86Reg::R12, X86Reg::RCX);
-#else
-    assembler_.mov_r64_r64(X86Reg::R12, X86Reg::RDI);
+    return make_error<std::vector<u8>>(StatusCode::NotImplemented,
+                                       "Windows native ABI is unsupported");
 #endif
-
-    // Allocate stack space for spills (2056 bytes preserves 16-byte alignment)
-    assembler_.add_r64_imm32(X86Reg::RSP, -2056);
-}
-
-void X86CodeGenerator::emit_epilogue() noexcept {
-    // Restore stack pointer
-    assembler_.add_r64_imm32(X86Reg::RSP, 2056);
-    
-    // Restore callee-saved registers
-    assembler_.pop_r64(X86Reg::R15);
-    assembler_.pop_r64(X86Reg::R14);
-    assembler_.pop_r64(X86Reg::R13);
-    assembler_.pop_r64(X86Reg::R12);
-    assembler_.pop_r64(X86Reg::RBX);
-    assembler_.pop_r64(X86Reg::RBP);
-    assembler_.ret();
-}
-
-i32 X86CodeGenerator::allocate_spill_slot() noexcept {
-    if (!free_slots_.empty()) {
-        i32 slot = free_slots_.back();
-        free_slots_.pop_back();
-        return slot;
-    }
-    return next_spill_slot_++;
-}
-
-void X86CodeGenerator::free_spill_slot(i32 slot) noexcept {
-    free_slots_.push_back(slot);
-}
-
-void X86CodeGenerator::spill_reg(X86Reg reg) noexcept {
-    auto it = reg_to_value_.find(static_cast<u8>(reg));
-    if (it == reg_to_value_.end()) {
-        return;
-    }
-    u32 val = it->second;
-    i32 slot = allocate_spill_slot();
-    assembler_.mov_mem_r64(X86Reg::RSP, reg, slot * 8);
-    value_to_slot_[val] = slot;
-    value_to_reg_.erase(val);
-    reg_to_value_.erase(it);
-    free_regs_.push_back(reg);
-}
-
-X86Reg X86CodeGenerator::ensure_reg_for_operand(u32 value_id, const std::vector<X86Reg>& pinned) noexcept {
-    auto reg_it = value_to_reg_.find(value_id);
-    if (reg_it != value_to_reg_.end()) {
-        return reg_it->second;
-    }
-    
-    auto slot_it = value_to_slot_.find(value_id);
-    if (slot_it != value_to_slot_.end()) {
-        i32 slot = slot_it->second;
-        if (free_regs_.empty()) {
-            X86Reg victim = X86Reg::RAX;
-            for (const auto& [reg_code, assigned_val] : reg_to_value_) {
-                X86Reg candidate = static_cast<X86Reg>(reg_code);
-                if (std::find(pinned.begin(), pinned.end(), candidate) == pinned.end()) {
-                    victim = candidate;
+    auto planned = plan_native(fn, 6);
+    if (!planned.ok())
+        return make_error<std::vector<u8>>(planned.status().code(), planned.status().message());
+    const auto &plan = planned.value();
+    auto &a = assembler_;
+    a.clear();
+    constexpr X86Reg regs[] = {X86Reg::RSI, X86Reg::R8,  X86Reg::R9,
+                               X86Reg::RBX, X86Reg::R14, X86Reg::R15};
+    constexpr auto x = X86Reg::RAX, y = X86Reg::R10, z = X86Reg::R11;
+    i32 frame = static_cast<i32>(plan.stack_bytes + 8);
+    auto load = [&](ValueId v, X86Reg dst) {
+        if (fn->num_parameters() && v == fn->parameters()[0]) {
+            a.mov_r64_r64(dst, X86Reg::R12);
+            return;
+        }
+        auto loc = plan.locations.at(v);
+        if (loc.reg >= 0)
+            a.mov_r64_r64(dst, regs[loc.reg]);
+        else
+            a.mov_r64_mem(dst, X86Reg::RSP, loc.slot * 8);
+    };
+    auto save = [&](ValueId v, X86Reg src) {
+        auto loc = plan.locations.at(v);
+        if (loc.reg >= 0)
+            a.mov_r64_r64(regs[loc.reg], src);
+        else
+            a.mov_mem_r64(X86Reg::RSP, src, loc.slot * 8);
+    };
+    std::vector<usize> errors;
+    auto fail = [&](Condition c) {
+        a.jcc_rel32(c, 0);
+        errors.push_back(a.current_offset() - 4);
+    };
+    auto patch = [&](usize pos, usize target) {
+        a.patch32(pos, static_cast<u32>(static_cast<i64>(target) - static_cast<i64>(pos + 4)));
+    };
+    auto epilogue = [&]() {
+        a.add_r64_imm32(X86Reg::RSP, frame);
+        for (auto r :
+             {X86Reg::R15, X86Reg::R14, X86Reg::R13, X86Reg::R12, X86Reg::RBX, X86Reg::RBP})
+            a.pop_r64(r);
+        a.ret();
+    };
+    for (auto r : {X86Reg::RBP, X86Reg::RBX, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15})
+        a.push_r64(r);
+    a.mov_r64_r64(X86Reg::R12, X86Reg::RDI);
+    a.mov_r64_r64(X86Reg::R13, X86Reg::RSI);
+    a.add_r64_imm32(X86Reg::RSP, -frame);
+    a.mov_r64_imm64(x, 0);
+    a.mov_mem_r64(X86Reg::R13, x, 0);
+    std::map<const BasicBlock *, usize> labels;
+    std::vector<std::pair<usize, const BasicBlock *>> jumps;
+    auto edge = [&](const BasicBlock *from, const BasicBlock *target) {
+        for (const auto &ip : target->instructions())
+            if (ip->opcode() == Opcode::Phi) {
+                auto phi = static_cast<const PhiOp *>(ip.get());
+                for (usize k = 0; k < phi->num_operands(); ++k)
+                    if (phi->incoming_blocks()[k] == from) {
+                        load(phi->operand(k), x);
+                        save(phi->result(), x);
+                    }
+            }
+        a.jmp_rel32(0);
+        jumps.emplace_back(a.current_offset() - 4, target);
+    };
+    constexpr i32 offsets[] = {0, 8, 16, 24, 28, 29, 30, 32, 40, 44, 46, 48};
+    constexpr int widths[] = {8, 8, 8, 4, 1, 1, 2, 8, 4, 2, 2, 8};
+    for (auto block : plan.blocks) {
+        labels[block] = a.current_offset();
+        for (const auto &ip : block->instructions()) {
+            auto in = ip.get();
+            auto op = in->opcode();
+            if (op == Opcode::Phi || op == Opcode::Nop)
+                continue;
+            if (op == Opcode::Jump) {
+                edge(block, static_cast<const JumpOp *>(in)->target());
+                continue;
+            }
+            if (op == Opcode::Branch) {
+                auto br = static_cast<const BranchOp *>(in);
+                load(br->condition(), x);
+                a.test_r64_r64(x, x);
+                a.jcc_rel32(Condition::E, 0);
+                auto pos = a.current_offset() - 4;
+                edge(block, br->true_block());
+                patch(pos, a.current_offset());
+                edge(block, br->false_block());
+                continue;
+            }
+            if (op == Opcode::Return) {
+                if (in->num_operands())
+                    load(in->operand(0), x);
+                else
+                    a.mov_r64_imm64(x, 0);
+                epilogue();
+                continue;
+            }
+            if (op >= Opcode::ConstI64 && op <= Opcode::ConstBool) {
+                a.mov_r64_imm64(x, static_cast<const ConstOp *>(in)->constant().as_u64());
+            } else if (op == Opcode::LoadColumn) {
+                auto col = static_cast<const LoadColumnOp *>(in)->column_id();
+                if (widths[col] == 8)
+                    a.mov_r64_mem(x, X86Reg::R12, offsets[col]);
+                if (widths[col] == 4)
+                    a.mov_r32_mem(x, X86Reg::R12, offsets[col]);
+                if (widths[col] == 2)
+                    a.movzx_r64_mem16(x, X86Reg::R12, offsets[col]);
+                if (widths[col] == 1)
+                    a.movzx_r64_mem8(x, X86Reg::R12, offsets[col]);
+            } else {
+                load(in->operand(0), x);
+                if (in->num_operands() > 1)
+                    load(in->operand(1), y);
+                switch (op) {
+                case Opcode::AddI64:
+                case Opcode::AddU64:
+                    a.add_r64_r64(x, y);
+                    fail(op == Opcode::AddI64 ? Condition::O : Condition::B);
+                    break;
+                case Opcode::SubI64:
+                case Opcode::SubU64:
+                    a.sub_r64_r64(x, y);
+                    fail(op == Opcode::SubI64 ? Condition::O : Condition::B);
+                    break;
+                case Opcode::MulI64:
+                    a.imul_r64_r64(x, y);
+                    fail(Condition::O);
+                    break;
+                case Opcode::MulU64:
+                    a.emit_rex64_b(y);
+                    a.emit(0xF7);
+                    a.emit(a.modrm(3, static_cast<u8>(4), y));
+                    a.test_r64_r64(X86Reg::RDX, X86Reg::RDX);
+                    fail(Condition::NE);
+                    break;
+                case Opcode::DivI64:
+                case Opcode::ModI64:
+                case Opcode::DivU64:
+                case Opcode::ModU64: {
+                    bool signed_op = op == Opcode::DivI64 || op == Opcode::ModI64;
+                    bool mod = op == Opcode::ModI64 || op == Opcode::ModU64;
+                    a.test_r64_r64(y, y);
+                    fail(Condition::E);
+                    usize special = 0, done = 0;
+                    if (signed_op) {
+                        a.mov_r64_imm64(z, 0x8000000000000000ULL);
+                        a.cmp_r64_r64(x, z);
+                        a.jcc_rel32(Condition::NE, 0);
+                        auto normal1 = a.current_offset() - 4;
+                        a.mov_r64_imm64(z, ~u64{0});
+                        a.cmp_r64_r64(y, z);
+                        if (!mod)
+                            fail(Condition::E);
+                        else {
+                            a.jcc_rel32(Condition::E, 0);
+                            special = a.current_offset() - 4;
+                        }
+                        patch(normal1, a.current_offset());
+                        a.cqo();
+                        a.idiv_r64(y);
+                    } else {
+                        a.xor_r64_r64(X86Reg::RDX, X86Reg::RDX);
+                        a.div_r64(y);
+                    }
+                    if (mod)
+                        a.mov_r64_r64(x, X86Reg::RDX);
+                    if (special) {
+                        a.jmp_rel32(0);
+                        done = a.current_offset() - 4;
+                        patch(special, a.current_offset());
+                        a.mov_r64_imm64(x, 0);
+                        patch(done, a.current_offset());
+                    }
                     break;
                 }
-            }
-            spill_reg(victim);
-        }
-        X86Reg reg = free_regs_.back();
-        free_regs_.pop_back();
-        assembler_.mov_r64_mem(reg, X86Reg::RSP, slot * 8);
-        value_to_reg_[value_id] = reg;
-        reg_to_value_[static_cast<u8>(reg)] = value_id;
-        return reg;
-    }
-    
-    // Default fallback (e.g. context pointer parameter 0)
-    return X86Reg::R12;
-}
-
-X86Reg X86CodeGenerator::allocate_reg_for_result(u32 value_id, const std::vector<X86Reg>& pinned) noexcept {
-    if (free_regs_.empty()) {
-        X86Reg victim = X86Reg::RAX;
-        for (const auto& [reg_code, assigned_val] : reg_to_value_) {
-            X86Reg candidate = static_cast<X86Reg>(reg_code);
-            if (std::find(pinned.begin(), pinned.end(), candidate) == pinned.end()) {
-                victim = candidate;
-                break;
-            }
-        }
-        spill_reg(victim);
-    }
-    X86Reg reg = free_regs_.back();
-    free_regs_.pop_back();
-    value_to_reg_[value_id] = reg;
-    reg_to_value_[static_cast<u8>(reg)] = value_id;
-    return reg;
-}
-
-void X86CodeGenerator::consume_operand(u32 value_id) noexcept {
-    auto uses_it = remaining_uses_.find(value_id);
-    if (uses_it != remaining_uses_.end() && uses_it->second > 0) {
-        uses_it->second--;
-        if (uses_it->second == 0) {
-            auto reg_it = value_to_reg_.find(value_id);
-            if (reg_it != value_to_reg_.end()) {
-                X86Reg reg = reg_it->second;
-                if (reg != X86Reg::R12) {
-                    reg_to_value_.erase(static_cast<u8>(reg));
-                    value_to_reg_.erase(reg_it);
-                    free_regs_.push_back(reg);
+                case Opcode::NegI64:
+                    a.neg_r64(x);
+                    fail(Condition::O);
+                    break;
+                case Opcode::U64ToI64:
+                    a.test_r64_r64(x, x);
+                    fail(Condition::S);
+                    break;
+                case Opcode::NegU64:
+                    a.mov_r64_imm64(y, 0x8000000000000000ULL);
+                    a.cmp_r64_r64(x, y);
+                    fail(Condition::A);
+                    a.neg_r64(x);
+                    break;
+                case Opcode::And:
+                case Opcode::Or:
+                    a.test_r64_r64(x, x);
+                    a.setcc(Condition::NE, x);
+                    a.movzx_r64_r8(x, x);
+                    a.test_r64_r64(y, y);
+                    a.setcc(Condition::NE, y);
+                    a.movzx_r64_r8(y, y);
+                    if (op == Opcode::And)
+                        a.and_r64_r64(x, y);
+                    else
+                        a.or_r64_r64(x, y);
+                    break;
+                case Opcode::Not:
+                    a.test_r64_r64(x, x);
+                    a.setcc(Condition::E, x);
+                    a.movzx_r64_r8(x, x);
+                    break;
+                case Opcode::BitAnd:
+                    a.and_r64_r64(x, y);
+                    break;
+                case Opcode::BitOr:
+                    a.or_r64_r64(x, y);
+                    break;
+                case Opcode::BitXor:
+                    a.xor_r64_r64(x, y);
+                    break;
+                case Opcode::BitNot:
+                    a.not_r64(x);
+                    break;
+                case Opcode::Select:
+                    load(in->operand(2), z);
+                    a.test_r64_r64(x, x);
+                    a.mov_r64_r64(x, z);
+                    a.cmovcc_r64_r64(Condition::NE, x, y);
+                    break;
+                case Opcode::Shl:
+                case Opcode::Shr:
+                    a.mov_r64_imm64(z, 64);
+                    a.cmp_r64_r64(y, z);
+                    fail(Condition::AE);
+                    a.mov_r64_r64(X86Reg::RCX, y);
+                    a.rex_w();
+                    a.emit(0xD3);
+                    a.emit(op == Opcode::Shl ? 0xE0 : 0xE8);
+                    break;
+                case Opcode::ExtendI32ToI64:
+                    a.rex_w();
+                    a.emit(0x63);
+                    a.emit(0xC0);
+                    break;
+                case Opcode::ExtendU32ToU64:
+                case Opcode::TruncI64ToI32:
+                    a.emit(0x89);
+                    a.emit(0xC0);
+                    break;
+                default: {
+                    constexpr Condition conditions[] = {
+                        Condition::E, Condition::NE, Condition::L, Condition::LE,
+                        Condition::G, Condition::GE, Condition::E, Condition::NE,
+                        Condition::B, Condition::BE, Condition::A, Condition::AE};
+                    if (!is_comparison(op))
+                        return make_error<std::vector<u8>>(StatusCode::NotImplemented,
+                                                           "Unsupported x86 opcode");
+                    a.cmp_r64_r64(x, y);
+                    a.setcc(conditions[static_cast<int>(op) - static_cast<int>(Opcode::EqI64)], x);
+                    a.movzx_r64_r8(x, x);
+                    break;
+                }
                 }
             }
-            auto slot_it = value_to_slot_.find(value_id);
-            if (slot_it != value_to_slot_.end()) {
-                free_spill_slot(slot_it->second);
-                value_to_slot_.erase(slot_it);
-            }
+            save(in->result(), x);
         }
     }
+    auto error_label = a.current_offset();
+    a.mov_r64_imm64(x, 1);
+    a.mov_mem_r64(X86Reg::R13, x, 0);
+    a.mov_r64_imm64(x, 0);
+    epilogue();
+    for (auto p : errors)
+        patch(p, error_label);
+    for (auto [p, b] : jumps)
+        patch(p, labels.at(b));
+    return std::vector<u8>(a.code());
 }
-
-Status X86CodeGenerator::emit_instruction(const ir::Instruction* instr) noexcept {
-    using namespace ir;
-    
-    switch (instr->opcode()) {
-        case Opcode::Nop:
-            assembler_.nop();
-            break;
-            
-        case Opcode::ConstU64:
-        case Opcode::ConstI64: {
-            auto const_op = static_cast<const ConstOp*>(instr);
-            X86Reg dst = allocate_reg_for_result(instr->result(), {});
-            assembler_.mov_r64_imm64(dst, const_op->constant().get_u64());
-            break;
-        }
-        
-        case Opcode::ConstU32: {
-            auto const_op = static_cast<const ConstOp*>(instr);
-            X86Reg dst = allocate_reg_for_result(instr->result(), {});
-            assembler_.mov_r32_imm32(dst, const_op->constant().get_u32());
-            break;
-        }
-
-        case Opcode::ConstBool: {
-            auto const_op = static_cast<const ConstOp*>(instr);
-            X86Reg dst = allocate_reg_for_result(instr->result(), {});
-            assembler_.mov_r64_imm64(dst, const_op->constant().get_bool() ? 1ULL : 0ULL);
-            break;
-        }
-
-        case Opcode::LoadColumn: {
-            auto load_op = static_cast<const LoadColumnOp*>(instr);
-            X86Reg dst = allocate_reg_for_result(instr->result(), {});
-            u32 cid = load_op->column_id();
-            switch (cid) {
-                case 0:  assembler_.mov_r64_mem(dst, X86Reg::R12, 0); break;     // exchange_ts_ns (8B)
-                case 1:  assembler_.mov_r64_mem(dst, X86Reg::R12, 8); break;     // receive_ts_ns (8B)
-                case 2:  assembler_.mov_r64_mem(dst, X86Reg::R12, 16); break;    // sequence (8B)
-                case 3:  assembler_.mov_r32_mem(dst, X86Reg::R12, 24); break;    // instrument_id (4B, zero-ext)
-                case 4:  assembler_.movzx_r64_mem8(dst, X86Reg::R12, 28); break; // event_type (1B, zero-ext)
-                case 5:  assembler_.movzx_r64_mem8(dst, X86Reg::R12, 29); break; // side (1B, zero-ext)
-                case 6:  assembler_.movzx_r64_mem16(dst, X86Reg::R12, 30); break;// flags (2B, zero-ext)
-                case 7:  assembler_.mov_r64_mem(dst, X86Reg::R12, 32); break;    // price_ticks (8B)
-                case 8:  assembler_.mov_r32_mem(dst, X86Reg::R12, 40); break;    // quantity (4B, zero-ext)
-                case 9:  assembler_.movzx_r64_mem16(dst, X86Reg::R12, 44); break;// venue_id (2B, zero-ext)
-                case 10: assembler_.movzx_r64_mem16(dst, X86Reg::R12, 46); break;// source_id (2B, zero-ext)
-                case 11: assembler_.mov_r64_mem(dst, X86Reg::R12, 48); break;    // trade_or_order_id (8B)
-                default: assembler_.mov_r64_imm64(dst, 0); break;
-            }
-            if (instr->num_operands() > 0) {
-                consume_operand(instr->operand(0));
-            }
-            break;
-        }
-        
-        case Opcode::AddU64:
-        case Opcode::AddI64: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            assembler_.mov_r64_r64(dst, lhs);
-            assembler_.add_r64_r64(dst, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-        
-        case Opcode::SubU64:
-        case Opcode::SubI64: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            assembler_.mov_r64_r64(dst, lhs);
-            assembler_.sub_r64_r64(dst, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-        
-        case Opcode::MulU64:
-        case Opcode::MulI64: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            assembler_.mov_r64_r64(dst, lhs);
-            assembler_.imul_r64_r64(dst, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-
-        case Opcode::DivU64:
-        case Opcode::ModU64: {
-            bool is_mod = (instr->opcode() == Opcode::ModU64);
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            
-            // Check divisor == 0
-            assembler_.test_r64_r64(rhs, rhs);
-            assembler_.jcc_rel32(Condition::E, 0);
-            usize jmp_zero = assembler_.current_offset() - 4;
-
-            // Non-zero divisor
-            assembler_.mov_r64_r64(X86Reg::RAX, lhs);
-            assembler_.xor_r64_r64(X86Reg::RDX, X86Reg::RDX);
-            assembler_.div_r64(rhs);
-            assembler_.mov_r64_r64(dst, is_mod ? X86Reg::RDX : X86Reg::RAX);
-            assembler_.jmp_rel32(0);
-            usize jmp_done = assembler_.current_offset() - 4;
-
-            // Zero divisor: return 0 gracefully
-            usize zero_label = assembler_.current_offset();
-            assembler_.patch32(jmp_zero, static_cast<u32>(zero_label - (jmp_zero + 4)));
-            assembler_.xor_r64_r64(dst, dst);
-
-            // Done
-            usize done_label = assembler_.current_offset();
-            assembler_.patch32(jmp_done, static_cast<u32>(done_label - (jmp_done + 4)));
-
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-
-        case Opcode::DivI64:
-        case Opcode::ModI64: {
-            bool is_mod = (instr->opcode() == Opcode::ModI64);
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            
-            // Check divisor == 0
-            assembler_.test_r64_r64(rhs, rhs);
-            assembler_.jcc_rel32(Condition::E, 0);
-            usize jmp_zero = assembler_.current_offset() - 4;
-
-            // Non-zero divisor
-            assembler_.mov_r64_r64(X86Reg::RAX, lhs);
-            assembler_.cqo();
-            assembler_.idiv_r64(rhs);
-            assembler_.mov_r64_r64(dst, is_mod ? X86Reg::RDX : X86Reg::RAX);
-            assembler_.jmp_rel32(0);
-            usize jmp_done = assembler_.current_offset() - 4;
-
-            // Zero divisor: return 0 gracefully
-            usize zero_label = assembler_.current_offset();
-            assembler_.patch32(jmp_zero, static_cast<u32>(zero_label - (jmp_zero + 4)));
-            assembler_.xor_r64_r64(dst, dst);
-
-            // Done
-            usize done_label = assembler_.current_offset();
-            assembler_.patch32(jmp_done, static_cast<u32>(done_label - (jmp_done + 4)));
-
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-
-        case Opcode::NegI64: {
-            X86Reg src = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {src});
-            assembler_.mov_r64_r64(dst, src);
-            assembler_.neg_r64(dst);
-            consume_operand(instr->operand(0));
-            break;
-        }
-
-        case Opcode::Not: {
-            X86Reg src = ensure_reg_for_operand(instr->operand(0), {});
-            assembler_.test_r64_r64(src, src);
-            consume_operand(instr->operand(0));
-            X86Reg dst = allocate_reg_for_result(instr->result(), {});
-            assembler_.setcc(Condition::E, dst);
-            assembler_.movzx_r64_r8(dst, dst);
-            break;
-        }
-
-        case Opcode::BitNot: {
-            X86Reg src = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {src});
-            assembler_.mov_r64_r64(dst, src);
-            assembler_.not_r64(dst);
-            consume_operand(instr->operand(0));
-            break;
-        }
-        
-        case Opcode::And:
-        case Opcode::BitAnd: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            assembler_.mov_r64_r64(dst, lhs);
-            assembler_.and_r64_r64(dst, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-        
-        case Opcode::Or:
-        case Opcode::BitOr: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            assembler_.mov_r64_r64(dst, lhs);
-            assembler_.or_r64_r64(dst, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-        
-        case Opcode::BitXor: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            X86Reg dst = allocate_reg_for_result(instr->result(), {lhs, rhs});
-            assembler_.mov_r64_r64(dst, lhs);
-            assembler_.xor_r64_r64(dst, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            break;
-        }
-        
-        // Unsigned comparisons
-        case Opcode::EqU64:
-        case Opcode::NeU64:
-        case Opcode::LtU64:
-        case Opcode::LeU64:
-        case Opcode::GtU64:
-        case Opcode::GeU64:
-        // Signed comparisons
-        case Opcode::EqI64:
-        case Opcode::NeI64:
-        case Opcode::LtI64:
-        case Opcode::LeI64:
-        case Opcode::GtI64:
-        case Opcode::GeI64: {
-            X86Reg lhs = ensure_reg_for_operand(instr->operand(0), {});
-            X86Reg rhs = ensure_reg_for_operand(instr->operand(1), {lhs});
-            
-            // Compare operands first without clobbering either
-            assembler_.cmp_r64_r64(lhs, rhs);
-            consume_operand(instr->operand(0));
-            consume_operand(instr->operand(1));
-            
-            // Choose condition code
-            Condition cond = Condition::E;
-            switch (instr->opcode()) {
-                case Opcode::EqU64:
-                case Opcode::EqI64: cond = Condition::E; break;
-                case Opcode::NeU64:
-                case Opcode::NeI64: cond = Condition::NE; break;
-                case Opcode::LtU64: cond = Condition::B; break;
-                case Opcode::LeU64: cond = Condition::BE; break;
-                case Opcode::GtU64: cond = Condition::A; break;
-                case Opcode::GeU64: cond = Condition::AE; break;
-                case Opcode::LtI64: cond = Condition::L; break;
-                case Opcode::LeI64: cond = Condition::LE; break;
-                case Opcode::GtI64: cond = Condition::G; break;
-                case Opcode::GeI64: cond = Condition::GE; break;
-                default: break;
-            }
-            
-            X86Reg dst = allocate_reg_for_result(instr->result(), {});
-            assembler_.setcc(cond, dst);
-            assembler_.movzx_r64_r8(dst, dst);
-            break;
-        }
-
-        case Opcode::Select: {
-            auto sel_op = static_cast<const SelectOp*>(instr);
-            X86Reg r_cond = ensure_reg_for_operand(sel_op->condition(), {});
-            X86Reg r_true = ensure_reg_for_operand(sel_op->true_value(), {r_cond});
-            X86Reg r_false = ensure_reg_for_operand(sel_op->false_value(), {r_cond, r_true});
-            X86Reg r_dst = allocate_reg_for_result(instr->result(), {r_cond, r_true, r_false});
-            
-            assembler_.test_r64_r64(r_cond, r_cond);
-            if (r_dst == r_true) {
-                assembler_.cmovcc_r64_r64(Condition::E, r_dst, r_false);
-            } else {
-                assembler_.mov_r64_r64(r_dst, r_false);
-                assembler_.cmovcc_r64_r64(Condition::NE, r_dst, r_true);
-            }
-            
-            consume_operand(sel_op->condition());
-            consume_operand(sel_op->true_value());
-            consume_operand(sel_op->false_value());
-            break;
-        }
-        
-        case Opcode::Return: {
-            if (instr->num_operands() > 0) {
-                X86Reg ret_val = ensure_reg_for_operand(instr->operand(0), {});
-                if (ret_val != X86Reg::RAX) {
-                    assembler_.mov_r64_r64(X86Reg::RAX, ret_val);
-                }
-                consume_operand(instr->operand(0));
-            } else {
-                assembler_.xor_r64_r64(X86Reg::RAX, X86Reg::RAX);
-            }
-            emit_epilogue();
-            break;
-        }
-        
-        default:
-            return Status(StatusCode::NotImplemented, "Instruction not implemented in x86 JIT");
-    }
-    
-    return Status::OK();
-}
-
-} // namespace jit
-} // namespace vectortick
+} // namespace vectortick::jit

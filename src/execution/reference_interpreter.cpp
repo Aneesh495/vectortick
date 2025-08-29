@@ -21,12 +21,26 @@ Result<u64> ReferenceInterpreter::execute(const ir::Function* function,
     
     // Start at entry block
     const ir::BasicBlock* current = function->entry_block();
+    const ir::BasicBlock* previous = nullptr;
+    usize steps = 0;
     
     while (current) {
+        if (++steps > 100000) return make_error<u64>(StatusCode::InternalError, "IR execution step limit");
         const ir::BasicBlock* next_block = nullptr;
         for (usize i = 0; i < current->num_instructions(); ++i) {
             const ir::Instruction* instr = current->instruction(i);
             
+            if (instr->opcode() == ir::Opcode::Phi) {
+                auto phi = static_cast<const ir::PhiOp*>(instr);
+                bool found = false;
+                for (usize k = 0; k < phi->num_operands(); ++k) if (phi->incoming_blocks()[k] == previous) {
+                    auto value = values_.find(phi->operand(k));
+                    if (value == values_.end()) return make_error<u64>(StatusCode::InternalError, "Undefined phi input");
+                    values_[phi->result()] = value->second; found = true; break;
+                }
+                if (!found) return make_error<u64>(StatusCode::InternalError, "Missing phi edge");
+                continue;
+            }
             if (instr->opcode() == ir::Opcode::Return) {
                 ++instructions_executed_;
                 if (instr->num_operands() > 0) {
@@ -64,6 +78,7 @@ Result<u64> ReferenceInterpreter::execute(const ir::Function* function,
             
             ++instructions_executed_;
         }
+        previous = current;
         current = next_block;
     }
     
@@ -362,6 +377,7 @@ Status ReferenceInterpreter::execute_instruction(const ir::Instruction* instr,
             if (rhs == 0) {
                 return Status(StatusCode::InternalError, "Division by zero");
             }
+            if (lhs == std::numeric_limits<i64>::min() && rhs == -1) return Status(StatusCode::InternalError, "Division overflow");
             values_[result] = static_cast<u64>(lhs / rhs);
             break;
         }
@@ -375,10 +391,19 @@ Status ReferenceInterpreter::execute_instruction(const ir::Instruction* instr,
             if (rhs == 0) {
                 return Status(StatusCode::InternalError, "Modulo by zero");
             }
-            values_[result] = static_cast<u64>(lhs % rhs);
+            values_[result] = (lhs == std::numeric_limits<i64>::min() && rhs == -1) ? 0 : static_cast<u64>(lhs % rhs);
             break;
         }
         
+        case ir::Opcode::U64ToI64:
+        case ir::Opcode::NegU64: {
+            u64 val = 0;
+            if (auto st = get_val(instr->operand(0), val); !st.ok()) return st;
+            u64 bound = instr->opcode() == ir::Opcode::NegU64 ? (u64{1} << 63) : static_cast<u64>(INT64_MAX);
+            if (val > bound) return Status(StatusCode::InternalError, "Signed conversion overflow");
+            values_[result] = instr->opcode() == ir::Opcode::NegU64 ? u64{0} - val : val;
+            break;
+        }
         case ir::Opcode::NegI64: {
             u64 val_u = 0;
             if (auto st = get_val(instr->operand(0), val_u); !st.ok()) return st;
@@ -544,7 +569,8 @@ Status ReferenceInterpreter::execute_instruction(const ir::Instruction* instr,
             u64 lhs = 0, rhs = 0;
             if (auto st = get_val(instr->operand(0), lhs); !st.ok()) return st;
             if (auto st = get_val(instr->operand(1), rhs); !st.ok()) return st;
-            values_[result] = (rhs < 64) ? (lhs << rhs) : 0;
+            if (rhs >= 64) return Status(StatusCode::InternalError, "Invalid shift");
+            values_[result] = lhs << rhs;
             break;
         }
         
@@ -552,7 +578,8 @@ Status ReferenceInterpreter::execute_instruction(const ir::Instruction* instr,
             u64 lhs = 0, rhs = 0;
             if (auto st = get_val(instr->operand(0), lhs); !st.ok()) return st;
             if (auto st = get_val(instr->operand(1), rhs); !st.ok()) return st;
-            values_[result] = (rhs < 64) ? (lhs >> rhs) : 0;
+            if (rhs >= 64) return Status(StatusCode::InternalError, "Invalid shift");
+            values_[result] = lhs >> rhs;
             break;
         }
         
