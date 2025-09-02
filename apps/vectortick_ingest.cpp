@@ -94,14 +94,11 @@ int main(int argc, char* argv[]) {
         if (vtp_data != nullptr && vtp_size >= vtp1::FrameHeader::Size) {
             usize offset = 0;
             while (offset < vtp_size) {
-                CanonicalEvent event;
+                CanonicalEvent event{};
                 auto dec_res = decoder.decode_frame(vtp_data + offset, vtp_size - offset, event, reader.packet_timestamp_ns());
                 if (!dec_res.ok()) {
-                    if (verbose) {
-                        std::cerr << "Decode frame notice at packet " << packet_count 
-                                  << ": " << dec_res.status().message() << "\n";
-                    }
-                    break;
+                    std::cerr << "Decode error at packet " << packet_count << ": " << dec_res.status().message() << "\n";
+                    return 1;
                 }
                 offset += dec_res.value();
                 
@@ -133,7 +130,8 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     } else {
-        std::cerr << "Warning: No valid events found to write\n";
+        std::cerr << "No events found to write\n";
+        return 1;
     }
     
     std::cout << "Ingestion complete:\n";

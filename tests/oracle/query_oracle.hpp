@@ -177,6 +177,8 @@ public:
             }
         }
 
+        if (eff_projections.empty()) eff_projections.push_back({nullptr,"",true});
+
         bool has_aggregates = false;
         for (const auto& item : eff_projections) {
             if (item.expr && item.expr->type == query::ExprType::FunctionCall) {
@@ -271,7 +273,7 @@ public:
 
                 it->second.count++;
                 for (auto& acc : it->second.accs) {
-                    if (ieq(acc.fn, "COUNT")) continue;
+
                     if (!acc.arg) continue;
                     auto v_res = eval_expr(acc.arg, ev);
                     if (!v_res.ok()) return make_error<QueryResult>(v_res.status().code(), v_res.status().message());
@@ -370,7 +372,7 @@ public:
                 agg_count++;
 
                 for (auto& ai : agg_items) {
-                    if (ieq(ai.fn, "COUNT")) continue;
+
                     if (!ai.arg) continue;
                     auto v_res = eval_expr(ai.arg, ev);
                     if (!v_res.ok()) return make_error<QueryResult>(v_res.status().code(), v_res.status().message());

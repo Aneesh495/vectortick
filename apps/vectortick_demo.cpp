@@ -2,24 +2,24 @@
 // Demonstrates end-to-end flow: generate -> write segment -> inspect -> query -> JIT -> replay
 
 #include "vectortick/common/types.hpp"
-#include "vectortick/model/event.hpp"
-#include "vectortick/storage/segment_writer.hpp"
-#include "vectortick/storage/segment_reader.hpp"
-#include "vectortick/query/parser.hpp"
-#include "vectortick/ir/builder.hpp"
 #include "vectortick/execution/reference_interpreter.hpp"
 #include "vectortick/execution/vector_executor.hpp"
+#include "vectortick/ir/builder.hpp"
 #include "vectortick/jit/jit_compiler.hpp"
+#include "vectortick/model/event.hpp"
+#include "vectortick/query/parser.hpp"
 #include "vectortick/replay/replay_engine.hpp"
+#include "vectortick/storage/segment_reader.hpp"
+#include "vectortick/storage/segment_writer.hpp"
 
-#include <iostream>
-#include <iomanip>
 #include <filesystem>
+#include <iomanip>
+#include <iostream>
 #include <vector>
 
 using namespace vectortick;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     std::cout << "========================================================\n";
     std::cout << "       VectorTick Columnar Analytics Engine Demo         \n";
     std::cout << "========================================================\n\n";
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     std::string demo_segment = "demo_market_data.vts";
     if (argc > 1 && argv[1] != nullptr && argv[1][0] != '\0') {
         demo_segment = argv[1];
-    } else if (const char* env_seg = std::getenv("VECTORTICK_DEMO_SEGMENT")) {
+    } else if (const char *env_seg = std::getenv("VECTORTICK_DEMO_SEGMENT")) {
         if (env_seg[0] != '\0') {
             demo_segment = env_seg;
         }
@@ -67,7 +67,8 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to write segment: " << st.message() << "\n";
             return 1;
         }
-        std::cout << "  -> Wrote " << demo_segment << " (" << std::filesystem::file_size(demo_segment) << " bytes)\n\n";
+        std::cout << "  -> Wrote " << demo_segment << " ("
+                  << std::filesystem::file_size(demo_segment) << " bytes)\n\n";
     }
 
     std::cout << "[Step 2] Opening and Inspecting Segment Metadata...\n";
@@ -79,13 +80,19 @@ int main(int argc, char* argv[]) {
     }
 
     auto val_st = reader.validate();
+    if (!val_st.ok()) {
+        std::cerr << val_st.message() << "\n";
+        return 1;
+    }
     std::cout << "  Segment ID:      " << reader.segment_id() << "\n";
     std::cout << "  Rows:            " << reader.row_count() << "\n";
     std::cout << "  Schema Hash:     0x" << std::hex << reader.schema_hash() << std::dec << "\n";
-    std::cout << "  Integrity Check: " << (val_st.ok() ? "PASSED (CRC32C Verified)" : "FAILED") << "\n\n";
+    std::cout << "  Integrity Check: " << (val_st.ok() ? "PASSED (CRC32C Verified)" : "FAILED")
+              << "\n\n";
 
     std::cout << "[Step 3] Executing SQL Query via Portable Vectorized Engine...\n";
-    std::string sql = "SELECT instrument_id, price_ticks, quantity WHERE price_ticks > 15300 LIMIT 5";
+    std::string sql =
+        "SELECT instrument_id, price_ticks, quantity WHERE price_ticks > 15300 LIMIT 5";
     std::cout << "  Query: " << sql << "\n";
 
     query::Parser parser(sql);
@@ -103,15 +110,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    const auto& res = q_res.value();
-    std::cout << "  Results (" << res.rows.size() << " rows returned, " 
-              << res.rows_matched << " matched out of " << res.rows_scanned << "):\n";
-    for (const auto& col : res.column_names) {
+    const auto &res = q_res.value();
+    std::cout << "  Results (" << res.rows.size() << " rows returned, " << res.rows_matched
+              << " matched out of " << res.rows_scanned << "):\n";
+    for (const auto &col : res.column_names) {
         std::cout << std::left << std::setw(16) << col;
     }
     std::cout << "\n------------------------------------------------\n";
-    for (const auto& row : res.rows) {
-        for (const auto& val : row) {
+    for (const auto &row : res.rows) {
+        for (const auto &val : row) {
             std::cout << std::left << std::setw(16) << val;
         }
         std::cout << "\n";
@@ -119,7 +126,8 @@ int main(int argc, char* argv[]) {
     std::cout << "\n";
 
     std::cout << "[Step 4] Executing Aggregation Query...\n";
-    std::string agg_sql = "SELECT COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks) WHERE instrument_id = 101";
+    std::string agg_sql = "SELECT COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks) "
+                          "WHERE instrument_id = 101";
     std::cout << "  Query: " << agg_sql << "\n";
     query::Parser agg_parser(agg_sql);
     auto agg_ast = agg_parser.parse_query();
@@ -129,31 +137,40 @@ int main(int argc, char* argv[]) {
     }
 
     auto agg_res = vector_exec.execute(reader, agg_ast.value().get());
+    if (!agg_res.ok() || agg_res.value().rows.empty())
+        return 1;
     if (agg_res.ok() && !agg_res.value().rows.empty()) {
-        const auto& a = agg_res.value();
-        for (const auto& col : a.column_names) std::cout << std::left << std::setw(16) << col;
+        const auto &a = agg_res.value();
+        for (const auto &col : a.column_names)
+            std::cout << std::left << std::setw(16) << col;
         std::cout << "\n----------------------------------------------------------------\n";
-        for (const auto& val : a.rows[0]) std::cout << std::left << std::setw(16) << val;
+        for (const auto &val : a.rows[0])
+            std::cout << std::left << std::setw(16) << val;
         std::cout << "\n\n";
     }
 
     std::cout << "[Step 5] Native Host JIT Compiler Verification...\n";
     ir::Builder ir_builder;
-    ir::Function* jit_fn = ir_builder.create_function("demo_filter");
+    ir::Function *jit_fn = ir_builder.create_function("demo_filter");
     jit_fn->add_parameter(jit_fn->create_value(ir::Type::U64, "ctx"));
-    ir::ValueId price_col = ir_builder.create_load_column(7, jit_fn->parameters()[0], ir::Type::I64);
+    ir::ValueId price_col =
+        ir_builder.create_load_column(7, jit_fn->parameters()[0], ir::Type::I64);
     ir::ValueId thresh = ir_builder.create_const_i64(15400);
     ir::ValueId cmp = ir_builder.create_gt(price_col, thresh, ir::Type::I64);
     ir_builder.create_return(cmp);
 
     CanonicalEvent sample_ev{};
-    if (reader.read_event(0, sample_ev).ok()) {
+    if (!reader.read_event(0, sample_ev).ok())
+        return 1;
+    {
         sample_ev.price_ticks = 15450;
         auto jit_val = jit::jit_execute(jit_fn, &sample_ev);
-        if (jit_val.ok()) {
-            std::cout << "  Host JIT execution result on price 15450 > 15400: " << jit_val.value() << " (PASSED)\n\n";
+        if (jit_val.ok() && jit_val.value() == 1) {
+            std::cout << "  Host JIT execution result on price 15450 > 15400: " << jit_val.value()
+                      << " (PASSED)\n\n";
         } else {
-            std::cout << "  Host JIT compilation error: " << jit_val.status().message() << "\n\n";
+            std::cerr << "Host JIT verification failed\n";
+            return 1;
         }
     }
 
@@ -162,17 +179,21 @@ int main(int argc, char* argv[]) {
     r_opt.rate_limit_events_per_sec = 0; // unlimited
     r_opt.verify_sequence = true;
     ReplayEngine replay(r_opt);
-    auto rep_st = replay.replay_segment(demo_segment);
+    u64 delivered = 0;
+    auto rep_st = replay.replay_segment(demo_segment, [&](const CanonicalEvent &) { ++delivered; });
+    if (!rep_st.ok() || delivered != NUM_EVENTS || replay.stats().total_events != delivered)
+        return 1;
     if (rep_st.ok()) {
-        const auto& stats = replay.stats();
-        std::cout << "  Replayed " << stats.total_events << " events in " 
-                  << (stats.elapsed_wall_ns / 1e6) << " ms (" 
-                  << std::fixed << std::setprecision(0) << stats.throughput_events_per_sec << " events/sec)\n";
+        const auto &stats = replay.stats();
+        std::cout << "  Replayed " << stats.total_events << " events in "
+                  << (stats.elapsed_wall_ns / 1e6) << " ms (" << std::fixed << std::setprecision(0)
+                  << stats.throughput_events_per_sec << " events/sec)\n";
         std::cout << "  Sequence Breaks: " << stats.sequence_breaks << "\n\n";
     }
 
     reader.close();
-    std::filesystem::remove(demo_segment, ec);
+    if (argc == 1 && !std::getenv("VECTORTICK_DEMO_SEGMENT"))
+        std::filesystem::remove(demo_segment, ec);
 
     std::cout << "========================================================\n";
     std::cout << "              Demo Completed Successfully!              \n";

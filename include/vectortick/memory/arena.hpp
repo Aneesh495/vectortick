@@ -1,4 +1,5 @@
 #pragma once
+#include "../common/checked_math.hpp"
 
 #include "../common/types.hpp"
 #include "../common/status.hpp"
