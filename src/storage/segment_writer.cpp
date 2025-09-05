@@ -10,24 +10,24 @@
 namespace vectortick {
 
 SegmentWriter::SegmentWriter(u64 segment_id, usize max_rows)
-    : segment_id_(segment_id), max_rows_(max_rows), row_count_(0), min_timestamp_(UINT64_MAX),
-      max_timestamp_(0), min_sequence_(UINT64_MAX), max_sequence_(0),
-      min_instrument_id_(UINT64_MAX), max_instrument_id_(0), min_price_(INT64_MAX),
-      max_price_(INT64_MIN), min_quantity_(UINT32_MAX), max_quantity_(0) {
+    : segment_id_(segment_id), max_rows_(std::min(max_rows, SegmentConfig::MaxRowsPerSegment)),
+      row_count_(0), min_timestamp_(UINT64_MAX), max_timestamp_(0), min_sequence_(UINT64_MAX),
+      max_sequence_(0), min_instrument_id_(UINT64_MAX), max_instrument_id_(0),
+      min_price_(INT64_MAX), max_price_(INT64_MIN), min_quantity_(UINT32_MAX), max_quantity_(0) {
 
     // Pre-allocate column buffers
-    exchange_ts_ns_.reserve(max_rows);
-    receive_ts_ns_.reserve(max_rows);
-    sequences_.reserve(max_rows);
-    instrument_ids_.reserve(max_rows);
-    event_types_.reserve(max_rows);
-    sides_.reserve(max_rows);
-    flags_.reserve(max_rows);
-    price_ticks_.reserve(max_rows);
-    quantities_.reserve(max_rows);
-    venue_ids_.reserve(max_rows);
-    source_ids_.reserve(max_rows);
-    trade_or_order_ids_.reserve(max_rows);
+    exchange_ts_ns_.reserve(max_rows_);
+    receive_ts_ns_.reserve(max_rows_);
+    sequences_.reserve(max_rows_);
+    instrument_ids_.reserve(max_rows_);
+    event_types_.reserve(max_rows_);
+    sides_.reserve(max_rows_);
+    flags_.reserve(max_rows_);
+    price_ticks_.reserve(max_rows_);
+    quantities_.reserve(max_rows_);
+    venue_ids_.reserve(max_rows_);
+    source_ids_.reserve(max_rows_);
+    trade_or_order_ids_.reserve(max_rows_);
 }
 
 Status SegmentWriter::add_event(const CanonicalEvent &event) noexcept {
@@ -114,7 +114,9 @@ Status SegmentWriter::write_to_file(const std::string &path) noexcept {
         return Status(StatusCode::InvalidArgument, "Segment row limit exceeded");
 
     // Calculate required size
-    usize estimated = estimated_size() * 2; // Safety margin
+    // Bound the worst-case expansion, including 10-byte delta varints,
+    // bitpacking headers, RLE, bloom bits and alignment between columns.
+    usize estimated = row_count_ * 128 + 8192;
     AlignedBuffer buffer;
     auto status = buffer.allocate(estimated);
     if (!status.ok()) {

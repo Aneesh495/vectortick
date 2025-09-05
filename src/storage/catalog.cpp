@@ -165,7 +165,8 @@ Status Manifest::deserialize(std::span<const u8> data) {
         }
         s.filename = std::string(reinterpret_cast<const char *>(data.data() + offset), name_len);
         offset += name_len;
-        if (s.filename.empty() || s.filename.find('/') != std::string::npos ||
+        if (s.filename.empty() || s.filename == "." || s.filename == ".." ||
+            s.filename.find('/') != std::string::npos ||
             s.filename.find('\\') != std::string::npos ||
             s.filename.find('\0') != std::string::npos || !s.segment_id ||
             s.segment_id == UINT64_MAX)
@@ -225,6 +226,16 @@ Status Manifest::save_atomic(const std::string &path) const {
         return Status(StatusCode::FileRenameFailed, "Failed to atomically rename manifest file");
     }
 
+    auto parent = std::filesystem::path(path).parent_path();
+    if (parent.empty())
+        parent = ".";
+    int directory = ::open(parent.c_str(), O_RDONLY);
+    if (directory < 0)
+        return Status(StatusCode::FileOpenFailed, "Cannot open manifest directory");
+    int sync_result = ::fsync(directory);
+    ::close(directory);
+    if (sync_result != 0)
+        return Status(StatusCode::FileSyncFailed, "Cannot sync manifest directory");
     return Status::OK();
 }
 
@@ -235,7 +246,7 @@ Status Manifest::load(const std::string &path, Manifest &out_manifest) {
     }
 
     struct stat st{};
-    if (::fstat(fd, &st) != 0 || st.st_size <= 0) {
+    if (::fstat(fd, &st) != 0 || st.st_size <= 0 || st.st_size > 64 * 1024 * 1024) {
         ::close(fd);
         return Status(StatusCode::ManifestInvalid, "Empty or invalid manifest file");
     }

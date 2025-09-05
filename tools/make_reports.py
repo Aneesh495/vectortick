@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bind executed local and hosted verification to unchanged source bytes."""
-import argparse, copy, gzip, hashlib, io, json, pathlib, re, shutil, subprocess, sys, tarfile, tempfile, xml.etree.ElementTree as ET
+import argparse, hashlib, io, json, pathlib, re, shutil, statistics, subprocess, sys, tarfile, tempfile, xml.etree.ElementTree as ET
 from run_verification import ROOT, source_manifest, digest, dump, semantic, semhash
 REQUIRED=[f'{os}-{compiler}-{kind}' for os in ('ubuntu-24.04','ubuntu-24.04-arm') for compiler in ('gcc','clang') for kind in ('Debug','Release')]+['macos-15-clang-Debug','macos-15-clang-Release','ubuntu-24.04-clang-sanitizers','ubuntu-24.04-clang-tsan']
 def require(ok,msg):
@@ -15,12 +15,18 @@ def validate_job(files,manifest,revision):
  for n,h in job['artifact_manifest'].items():require(n in files and hashlib.sha256(files[n]).hexdigest()==h,'Missing or changed artifact: '+n)
  require(set(files)==set(job['artifact_manifest'])|{'job.json'},'Unbound artifact files')
  def data(n):require(n in files,'Missing '+n);return json.loads(files[n])
- commands={r['name']:r for r in job['commands']};required={'configure','build','headers','diff-check'}
+ commands={r['name']:r for r in job['commands']};required={'configure','build','headers','diff-check','compiler-version','test-cases'}
  if job['tsan']:required.add('crc-tsan')
- else:required|={'ctest','empty-filter','native-campaign','sql-campaign','demo','generate-pcap','benchmark'}|{'invalid-'+str(i) for i in range(7)}|{'pcap-short-header','pcap-short-packet','pcap-excessive-snaplen','pcap-inconsistent-packet','vtp-checksum'}
+ else:required|={'ctest','empty-filter','native-campaign','sql-campaign','demo','demo-default','generate-pcap','benchmark'}|{'invalid-'+str(i) for i in range(7)}|{'pcap-short-header','pcap-short-packet','pcap-excessive-snaplen','pcap-inconsistent-packet','vtp-checksum'}
  require(required<=set(commands),'Missing required commands')
  for r in job['commands']:
   require(r['log'] in files and files[r['log']],'Missing raw command log');require(r['wall_ns']>0,'Invalid command timing');require(r['exit_code']==r['expected_exit'] or r['expected_exit']=='nonzero' and r['exit_code']!=0,'Failed required command')
+ compile=data('compile_commands.json');require(compile and all('command' in c for c in compile),'Missing compiler flags')
+ for c in compile:
+  flags=c['command'];require('-march=native' not in flags,'Nonportable compiler baseline')
+  if job['sanitizers']:require('-fsanitize=address' in flags and '-fsanitize=undefined' in flags,'Missing sanitizer flags')
+  if job['tsan']:require('-fsanitize=thread' in flags,'Missing TSan flags')
+ cases_text=files[commands['test-cases']['log']].decode();require(len(re.findall(r'  [a-z_]+::',cases_text))>=80,'Missing actual test discovery')
  headers=data('headers.json');require(headers['headers_checked']>=50 and headers['failures']==0 and all(r['exit_code']==0 for r in headers['results']),'Header checks failed')
  if job['tsan']:
   text=files[commands['crc-tsan']['log']].decode();require(re.search(r'0 failed, [1-9][0-9]* total run',text),'TSan skipped CRC tests');require('WARNING: ThreadSanitizer' not in text,'TSan race');return job
@@ -49,7 +55,7 @@ def validate_job(files,manifest,revision):
   if result['engine']=='jit':require(result['observability']['native_invocations']>=result['rows_scanned'] and result['observability']['fallback_count']==0,'CLI JIT skipped native code')
  require(all(len(x)==1 for x in digests.values()),'CLI engines disagree');return job
 
-def verify(out,check_source=True):
+def verify(out,check_source=True,require_negative=True):
  acc=json.loads((out/'ACCEPTANCE.json').read_text());require(acc['status']=='PASSED','Acceptance not passed');manifest=json.loads((out/'SOURCE_MANIFEST.json').read_text());revision=acc['implementation_revision']
  if check_source:
   require(source_manifest()==manifest,'Stale implementation source')
@@ -65,44 +71,53 @@ def verify(out,check_source=True):
  for n,h in docs['files'].items():
   require(digest(ROOT/n)==h and hashlib.sha256(subprocess.check_output(['git','show',start+':'+n],cwd=ROOT)).hexdigest()==h,'Changed documentation: '+n)
  require({n for n in subprocess.check_output(['git','ls-files'],cwd=ROOT,text=True).splitlines() if n.lower().split('/')[-1].startswith('readme') or pathlib.Path(n).suffix in ('.md','.rst') or n.startswith('docs/')}==set(docs['files']),'Documentation file set changed')
+ if require_negative:
+  require('NEGATIVE_TESTS.json' in acc['artifact_manifest'],'Missing evidence rejection tests')
+  tests=json.loads((out/'NEGATIVE_TESTS.json').read_text());require(tests['revision']==revision and len(tests['attacks'])==4 and all(x['rejected'] for x in tests['attacks']),'Evidence rejection tests failed or stale')
  return acc
 
 def assemble(out,inputs,hosted_path):
  out.mkdir(parents=True,exist_ok=True);(out/'jobs').mkdir(exist_ok=True);manifest=source_manifest();revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();ci=json.loads(hosted_path.read_text());require(ci['headSha']==revision,'Hosted revision mismatch')
- jobs=[]
+ jobs=[];summaries={}
  for directory in inputs:
   for record in directory.rglob('job.json'):
    base=record.parent;files={str(x.relative_to(base)):x.read_bytes() for x in base.rglob('*') if x.is_file()};job=validate_job(files,manifest,revision);jobs.append(job)
+   if not job['tsan']:
+    bench=json.loads(files['benchmarks.json']);timings={}
+    for rep in bench['repetitions']:timings.setdefault(rep['engine']+'-'+rep['cache'],[]).append(rep['wall_ns'])
+    medians={k:statistics.median(v) for k,v in timings.items()}
+    summaries[job['job_name']]={'input_rows':bench['input_rows'],'query':bench['query'],'input_sha256':bench['input_vts_sha256'],'result_sha256':bench['repetitions'][0]['result_sha256'],'median_wall_ns':medians,'speedup_vs_interpreter':{k:medians['interpreter-cold']/v for k,v in medians.items()},'ingestion_median_wall_ns':statistics.median(r['wall_ns'] for r in bench['ingestion_repetitions']),'replay_median_wall_ns':statistics.median(r['wall_ns'] for r in bench['replay_repetitions']),'memory_measurement':'process peak RSS, including preceding repetitions'}
    with tarfile.open(out/'jobs'/(job['job_name']+'.tar.gz'),'w:gz') as t:
     for n in sorted(files):info=tarfile.TarInfo(n);info.size=len(files[n]);info.mtime=0;t.addfile(info,io.BytesIO(files[n]))
+ dump(out/'BENCHMARKS.json',summaries)
  dump(out/'SOURCE_MANIFEST.json',manifest);dump(out/'HOSTED_CI.json',ci)
  names=subprocess.check_output(['git','ls-files'],cwd=ROOT,text=True).splitlines();doc_files={n:digest(ROOT/n) for n in names if n.lower().split('/')[-1].startswith('readme') or pathlib.Path(n).suffix in ('.md','.rst') or n.startswith('docs/')};dump(out/'DOCUMENT_BYTES.json',{'starting_revision':'976fc49d9dda2c788b149910f96b8eaad0a210cd','files':doc_files})
- acc={'schema':2,'status':'PASSED','implementation_revision':revision,'jobs':[j['job_name'] for j in jobs],'artifact_manifest':{str(p.relative_to(out)):digest(p) for p in out.rglob('*') if p.is_file() and p.name not in ('ACCEPTANCE.json','NEGATIVE_TESTS.json')}};dump(out/'ACCEPTANCE.json',acc);verify(out)
+ acc={'schema':2,'status':'PASSED','implementation_revision':revision,'jobs':[j['job_name'] for j in jobs],'artifact_manifest':{str(p.relative_to(out)):digest(p) for p in out.rglob('*') if p.is_file() and p.name not in ('ACCEPTANCE.json','NEGATIVE_TESTS.json')}};dump(out/'ACCEPTANCE.json',acc);verify(out,require_negative=False)
 
 def negatives(out):
- acc=verify(out);results=[]
+ acc=verify(out,require_negative=False);results=[]
  with tempfile.TemporaryDirectory() as tmp:
   base=pathlib.Path(tmp)/'bundle';shutil.copytree(out,base)
   target=next((base/'jobs').glob('*.tar.gz'));raw=target.read_bytes();target.unlink()
-  try:verify(base);raise RuntimeError('Deletion accepted')
+  try:verify(base,require_negative=False);raise RuntimeError('Deletion accepted')
   except ValueError as e:results.append({'case':'delete_required_raw','rejected':True,'reason':str(e)})
   target.write_bytes(raw);target.write_bytes(raw[:-1]+bytes([raw[-1]^1]))
-  try:verify(base);raise RuntimeError('Altered bytes accepted')
+  try:verify(base,require_negative=False);raise RuntimeError('Altered bytes accepted')
   except ValueError as e:results.append({'case':'alter_raw_bytes','rejected':True,'reason':str(e)})
   target.write_bytes(raw)
   source=ROOT/'src/common/crc32c.cpp';original=source.read_bytes()
   try:
    source.write_bytes(original+b'\n// evidence negative test\n')
-   try:verify(base);raise RuntimeError('Modified source accepted')
+   try:verify(base,require_negative=False);raise RuntimeError('Modified source accepted')
    except ValueError as e:results.append({'case':'modify_source','rejected':True,'reason':str(e)})
   finally:source.write_bytes(original)
   target=next(p for p in (base/'jobs').glob('*.tar.gz') if 'native-full.json' in load_archive(p));files=load_archive(target);data=json.loads(files['native-full.json']);data['native_invocations']=0;files['native-full.json']=(json.dumps(data)+'\n').encode();job=json.loads(files['job.json']);job['artifact_manifest']['native-full.json']=hashlib.sha256(files['native-full.json']).hexdigest();files['job.json']=(json.dumps(job)+'\n').encode()
   with tarfile.open(target,'w:gz') as t:
    for n,blob in files.items():info=tarfile.TarInfo(n);info.size=len(blob);t.addfile(info,io.BytesIO(blob))
   changed=json.loads((base/'ACCEPTANCE.json').read_text());changed['artifact_manifest'][str(target.relative_to(base))]=digest(target);dump(base/'ACCEPTANCE.json',changed)
-  try:verify(base);raise RuntimeError('Zero native count accepted')
+  try:verify(base,require_negative=False);raise RuntimeError('Zero native count accepted')
   except ValueError as e:results.append({'case':'zero_native_count_with_updated_hashes','rejected':True,'reason':str(e)})
- dump(out/'NEGATIVE_TESTS.json',results);print('All four evidence attacks rejected')
+ dump(out/'NEGATIVE_TESTS.json',{'revision':acc['implementation_revision'],'attacks':results});acc['artifact_manifest']['NEGATIVE_TESTS.json']=digest(out/'NEGATIVE_TESTS.json');dump(out/'ACCEPTANCE.json',acc);print('All four evidence attacks rejected')
 def main():
  p=argparse.ArgumentParser();p.add_argument('--verify-only',action='store_true');p.add_argument('--assemble',action='store_true');p.add_argument('--negative-tests',action='store_true');p.add_argument('--output',default='results/verified/bundle');p.add_argument('--input',action='append',default=[]);p.add_argument('--hosted');a=p.parse_args();out=(ROOT/a.output).resolve()
  try:
