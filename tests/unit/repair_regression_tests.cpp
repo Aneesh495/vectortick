@@ -373,3 +373,22 @@ VT_TEST(repair_regression_tests, incompressible_segment_expansion_and_manifest_l
     Manifest manifest;
     VT_ASSERT(!Manifest::load("repair-huge.manifest", manifest).ok());
 }
+
+VT_TEST(repair_regression_tests, native_rejects_vector_types_and_context_arithmetic) {
+    ir::Builder b;
+    auto f = b.create_function("unsupported_type");
+    auto v = f->create_value(ir::Type::Vector);
+    auto constant = ir::Constant::u64_const(1);
+    constant.type = ir::Type::Vector;
+    f->entry_block()->append(std::make_unique<ir::ConstOp>(constant, v));
+    b.create_return(v);
+    for (auto arch : {jit::TargetArch::X86_64, jit::TargetArch::AArch64})
+        VT_ASSERT(!jit::create_generator(arch)->generate(f).ok());
+    ir::Builder c;
+    f = c.create_function("context_return");
+    v = f->create_value(ir::Type::U64);
+    f->add_parameter(v);
+    c.create_return(v);
+    for (auto arch : {jit::TargetArch::X86_64, jit::TargetArch::AArch64})
+        VT_ASSERT(!jit::create_generator(arch)->generate(f).ok());
+}
