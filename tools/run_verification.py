@@ -24,7 +24,8 @@ def main():
   with log.open('w') as f:
    f.write(json.dumps([str(x) for x in args])+'\n');f.flush();r=subprocess.run([str(x) for x in args],cwd=cwd,stdout=f,stderr=subprocess.STDOUT)
   entry={'name':name,'argv':[str(x) for x in args],'exit_code':r.returncode,'expected_exit':expected,'wall_ns':time.monotonic_ns()-start,'peak_child_rss':resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,'log':log.name};job['commands'].append(entry);dump(out/'job.json',job)
-  if r.returncode!=expected and not (expected=='nonzero' and r.returncode!=0): raise RuntimeError(name+' failed: '+str(r.returncode))
+  if r.returncode!=expected: raise RuntimeError(name+' failed: '+str(r.returncode))
+  if any(marker in log.read_text() for marker in ('ERROR: AddressSanitizer','runtime error:','WARNING: ThreadSanitizer','LeakSanitizer: detected')): raise RuntimeError(name+' emitted a sanitizer diagnostic')
   return entry
  try:
   configure=['cmake','-S',ROOT,'-B',build,'-G','Ninja','-DCMAKE_BUILD_TYPE='+a.build_type,'-DCMAKE_CXX_COMPILER='+a.compiler]
@@ -44,7 +45,7 @@ def main():
    if len(discovery['tests'])<22:raise RuntimeError('Missing required discovered tests')
    run('ctest',['ctest','--test-dir',build,'--verbose','--output-on-failure','--no-tests=error','--output-junit',out/'ctest.xml'])
    for name in ('native-campaign.json','sql-campaign.json'):(out/name).write_bytes((build/name).read_bytes())
-   run('empty-filter',[build/'bin/vectortick_tests','--suite=does_not_exist'],expected='nonzero',cwd=build)
+   run('empty-filter',[build/'bin/vectortick_tests','--suite=does_not_exist'],expected=1,cwd=build)
    run('native-campaign',[build/'bin/vectortick_native_campaign','--require-arch',a.require_arch,'--json',out/'native-full.json'],cwd=build)
    run('sql-campaign',[build/'bin/vectortick_sql_campaign','--json',out/'sql-full.json'],cwd=build)
    run('demo-default',[build/'bin/vectortick_demo'],cwd=build)
@@ -67,12 +68,12 @@ def main():
       obs=data['observability']
       if engine=='jit' and (obs['native_invocations']<data['rows_scanned'] or obs['fallback_count']):raise RuntimeError('CLI did not execute native code')
       cli.append({'file':name+'.json','semantic_digest':h,'input_sha256':digest(out/target)})
-   for i,args in enumerate([['-e','unknown',fixture,'SELECT * FROM events'],[fixture,'SELECT +'],[fixture,'SELECT missing FROM events'],['-l','0',fixture,'SELECT * FROM events'],['-l','nope',fixture,'SELECT * FROM events'],['-e'],[fixture,'SELECT * FROM events LIMIT 0']]):run('invalid-'+str(i),[build/'bin/vectortick_query']+args,expected='nonzero')
+   for i,args in enumerate([['-e','unknown',fixture,'SELECT * FROM events'],[fixture,'SELECT +'],[fixture,'SELECT missing FROM events'],['-l','0',fixture,'SELECT * FROM events'],['-l','nope',fixture,'SELECT * FROM events'],['-e'],[fixture,'SELECT * FROM events LIMIT 0']]):run('invalid-'+str(i),[build/'bin/vectortick_query']+args,expected=1)
    # Corrupt the frozen input directly. Never rebuild a negative fixture in a reader.
    raw=(out/'input.pcap').read_bytes()
    corruptions={'pcap-short-header':raw[:23],'pcap-short-packet':raw[:-1],'pcap-excessive-snaplen':raw[:16]+b'\xff'*4+raw[20:],'pcap-inconsistent-packet':raw[:24]+raw[24:32]+b'\xff'*4+raw[36:],'vtp-checksum':raw[:-1]+bytes([raw[-1]^1])}
    for name,b in corruptions.items():
-    bad=out/(name+'.pcap');bad.write_bytes(b);run(name,[build/'bin/vectortick_ingest',bad,'-o',out/(name+'.vts')],expected='nonzero')
+    bad=out/(name+'.pcap');bad.write_bytes(b);run(name,[build/'bin/vectortick_ingest',bad,'-o',out/(name+'.vts')],expected=1)
    run('benchmark',[build/'bin/vectortick_verification_bench','--query',fixture,out/'benchmark-raw.json',str(repetitions)])
    bench=json.loads((out/'benchmark-raw.json').read_text());hashes=set()
    for rep in bench['repetitions']:
