@@ -16,6 +16,9 @@ Result<NativePlan> plan_native(const ir::Function *fn, usize registers) noexcept
     for (const auto &b : fn->blocks())
         all.insert(b.get());
     for (const auto &b : fn->blocks()) {
+        for (const auto &in : b->instructions())
+            if ((in->opcode() == Opcode::Nop || in->is_terminator()) && in->has_result())
+                return error("Native control instructions cannot define SSA results");
         if (!b->has_terminator())
             return error("Native block has no terminator");
         auto t = b->terminator();
