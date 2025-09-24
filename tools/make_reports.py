@@ -17,7 +17,7 @@ def validate_job(files,manifest,revision):
  def data(n):require(n in files,'Missing '+n);return json.loads(files[n])
  commands={r['name']:r for r in job['commands']};required={'configure','build','headers','diff-check','compiler-version','test-cases'}
  if job['tsan']:required.add('crc-tsan')
- else:required|={'ctest','empty-filter','native-campaign','sql-campaign','demo','demo-default','generate-pcap','benchmark'}|{'invalid-'+str(i) for i in range(7)}|{'pcap-short-header','pcap-short-packet','pcap-excessive-snaplen','pcap-inconsistent-packet','vtp-checksum'}
+ else:required|={'ctest','empty-filter','demo','demo-default','generate-pcap','benchmark'}|{'invalid-'+str(i) for i in range(7)}|{'pcap-short-header','pcap-short-packet','pcap-excessive-snaplen','pcap-inconsistent-packet','vtp-checksum'}
  require(required<=set(commands),'Missing required commands')
  for r in job['commands']:
   require(r['log'] in files and files[r['log']],'Missing raw command log');require(r['wall_ns']>0,'Invalid command timing');require(r['exit_code']==r['expected_exit'] or r['expected_exit']=='nonzero' and r['exit_code']==1,'Failed required command')
@@ -32,6 +32,8 @@ def validate_job(files,manifest,revision):
  headers=data('headers.json');require(headers['headers_checked']>=50 and headers['failures']==0 and all(r['exit_code']==0 for r in headers['results']),'Header checks failed')
  if job['tsan']:
   text=files[commands['crc-tsan']['log']].decode();require(re.search(r'0 failed, [1-9][0-9]* total run',text),'TSan skipped CRC tests');require('WARNING: ThreadSanitizer' not in text,'TSan race');return job
+ require(job.get('campaign_execution')=='ctest','Missing campaign execution record')
+ require(files['native-full.json']==files['native-campaign.json'] and files['sql-full.json']==files['sql-campaign.json'],'Campaign copy differs from actual CTest results')
  discovered=data('discovery.json');require(len(discovered['tests'])>=22,'Missing test discovery');names={x['name'] for x in discovered['tests']};require({'native_campaign','sql_campaign','repair_regression_tests','crc_concurrency_tests','all_tests'}<=names,'Required test missing')
  tree=ET.fromstring(files['ctest.xml']);cases=tree.findall('testcase');require(len(cases)==len(discovered['tests']) and all(c.find('failure') is None and c.find('skipped') is None and c.attrib.get('status','run')=='run' for c in cases),'Failed or skipped CTest entry')
  text=files[commands['ctest']['log']].decode();require('100% tests passed' in text,'CTest raw result not successful')

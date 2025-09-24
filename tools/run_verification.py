@@ -46,8 +46,12 @@ def main():
    run('ctest',['ctest','--test-dir',build,'--verbose','--output-on-failure','--no-tests=error','--output-junit',out/'ctest.xml'])
    for name in ('native-campaign.json','sql-campaign.json'):(out/name).write_bytes((build/name).read_bytes())
    run('empty-filter',[build/'bin/vectortick_tests','--suite=does_not_exist'],expected=1,cwd=build)
-   run('native-campaign',[build/'bin/vectortick_native_campaign','--require-arch',a.require_arch,'--json',out/'native-full.json'],cwd=build)
-   run('sql-campaign',[build/'bin/vectortick_sql_campaign','--json',out/'sql-full.json'],cwd=build)
+   # CTest already executes both full campaigns. Preserve those actual results.
+   (out/'native-full.json').write_bytes((out/'native-campaign.json').read_bytes())
+   (out/'sql-full.json').write_bytes((out/'sql-campaign.json').read_bytes())
+   job['campaign_execution']='ctest'
+   native=json.loads((out/'native-full.json').read_text())
+   if native['arch']!=a.require_arch:raise RuntimeError('Wrong native campaign architecture')
    run('demo-default',[build/'bin/vectortick_demo'],cwd=build)
    run('demo',[build/'bin/vectortick_demo',out/'demo.vts'],cwd=build)
    workload_rows=2000 if a.sanitizers else 50000
