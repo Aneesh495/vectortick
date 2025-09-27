@@ -1,0 +1,275 @@
+{
+  "local-aarch64-release": {
+    "ingestion_median_wall_ns": 190555500,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 48226000,
+      "jit-cold": 6872417,
+      "jit-warm": 6717917,
+      "vector-cold": 12658625
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 91844084,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 7.017327382782506,
+      "jit-warm": 7.178713282703552,
+      "vector-cold": 3.809734469581017
+    }
+  },
+  "local-aarch64-sanitizers": {
+    "ingestion_median_wall_ns": 611518500,
+    "input_rows": 2000,
+    "input_sha256": "1d137da0df0f3abfd14dad3572f16c0437eec83007c896d49a83584812f118ba",
+    "median_wall_ns": {
+      "interpreter-cold": 106332916,
+      "jit-cold": 33749375,
+      "jit-warm": 33492958,
+      "vector-cold": 60069916
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 5129250,
+    "result_sha256": "f6f218f2e26a5e0383e72b4355a1eb23fcf3ee651f8f5109101ffe3226c1f6bb",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.150663264134521,
+      "jit-warm": 3.1747842636055017,
+      "vector-cold": 1.7701525668855604
+    }
+  },
+  "macos-15-clang-Debug": {
+    "ingestion_median_wall_ns": 318950500,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 617393333,
+      "jit-cold": 227322041,
+      "jit-warm": 177777417,
+      "vector-cold": 338332917
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 173150625,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 2.7159413591575134,
+      "jit-warm": 3.4728445458289,
+      "vector-cold": 1.824810126293446
+    }
+  },
+  "macos-15-clang-Release": {
+    "ingestion_median_wall_ns": 235188125,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 33813708,
+      "jit-cold": 5572042,
+      "jit-warm": 5641000,
+      "vector-cold": 11050417
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 121771417,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 6.068458924035389,
+      "jit-warm": 5.9942754830703775,
+      "vector-cold": 3.059948597414921
+    }
+  },
+  "ubuntu-24.04-arm-clang-Debug": {
+    "ingestion_median_wall_ns": 83959478,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 683508338,
+      "jit-cold": 227415068,
+      "jit-warm": 227275485,
+      "vector-cold": 301707244
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 8063726,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.005554310939502,
+      "jit-warm": 3.0074001954060288,
+      "vector-cold": 2.265468766802298
+    }
+  },
+  "ubuntu-24.04-arm-clang-Release": {
+    "ingestion_median_wall_ns": 9311323,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 40831574,
+      "jit-cold": 10680206,
+      "jit-warm": 10649528,
+      "vector-cold": 15410015
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 623225,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.82310734455871,
+      "jit-warm": 3.8341205356706887,
+      "vector-cold": 2.6496777582630515
+    }
+  },
+  "ubuntu-24.04-arm-gcc-Debug": {
+    "ingestion_median_wall_ns": 81932812,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 673827385,
+      "jit-cold": 227507204,
+      "jit-warm": 227154502,
+      "vector-cold": 271100642
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 8159292,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 2.961784827701544,
+      "jit-warm": 2.9663835806344707,
+      "vector-cold": 2.4855248590669143
+    }
+  },
+  "ubuntu-24.04-arm-gcc-Release": {
+    "ingestion_median_wall_ns": 20085271,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 47756378,
+      "jit-cold": 12550920,
+      "jit-warm": 12514873,
+      "vector-cold": 13046163
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 790675,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.8050101506503107,
+      "jit-warm": 3.8159698464379144,
+      "vector-cold": 3.6605688584451994
+    }
+  },
+  "ubuntu-24.04-clang-Debug": {
+    "ingestion_median_wall_ns": 396770750,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 700562389,
+      "jit-cold": 250257007,
+      "jit-warm": 250074095,
+      "vector-cold": 355082058
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 161605906,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 2.7993717234858484,
+      "jit-warm": 2.8014192713563553,
+      "vector-cold": 1.9729591321676974
+    }
+  },
+  "ubuntu-24.04-clang-Release": {
+    "ingestion_median_wall_ns": 127031866,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 39775881,
+      "jit-cold": 10988261,
+      "jit-warm": 10884588,
+      "vector-cold": 15015930
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 58264311,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.6198522222943192,
+      "jit-warm": 3.6543304165486097,
+      "vector-cold": 2.6489122551849937
+    }
+  },
+  "ubuntu-24.04-clang-sanitizers": {
+    "ingestion_median_wall_ns": 41375361,
+    "input_rows": 2000,
+    "input_sha256": "1d137da0df0f3abfd14dad3572f16c0437eec83007c896d49a83584812f118ba",
+    "median_wall_ns": {
+      "interpreter-cold": 107514429,
+      "jit-cold": 31778939,
+      "jit-warm": 30527449,
+      "vector-cold": 40745306
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 7095910,
+    "result_sha256": "f6f218f2e26a5e0383e72b4355a1eb23fcf3ee651f8f5109101ffe3226c1f6bb",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.383197563644274,
+      "jit-warm": 3.5218936570821886,
+      "vector-cold": 2.638694847450649
+    }
+  },
+  "ubuntu-24.04-gcc-Debug": {
+    "ingestion_median_wall_ns": 404575651,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 795758882,
+      "jit-cold": 262806586,
+      "jit-warm": 262681293,
+      "vector-cold": 353530252
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 161788265,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.0279259515969663,
+      "jit-warm": 3.029370203381784,
+      "vector-cold": 2.2508933181763466
+    }
+  },
+  "ubuntu-24.04-gcc-Release": {
+    "ingestion_median_wall_ns": 314999155,
+    "input_rows": 50000,
+    "input_sha256": "af3fe5b0668ae2cad00c19431c0cd462d252341c300bc51403c0b73171558da9",
+    "median_wall_ns": {
+      "interpreter-cold": 51633495,
+      "jit-cold": 15264267,
+      "jit-warm": 15175351,
+      "vector-cold": 17228150
+    },
+    "memory_measurement": "process peak RSS, including preceding repetitions",
+    "query": "SELECT instrument_id, COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks), AVG(quantity) FROM events WHERE sequence % 3 != 0 AND price_ticks >= 10000 GROUP BY instrument_id ORDER BY instrument_id",
+    "replay_median_wall_ns": 152619621,
+    "result_sha256": "61d77492e8b1806f89dcd877945036e04c285467422bb4ae83532ffab44aa4d1",
+    "speedup_vs_interpreter": {
+      "interpreter-cold": 1.0,
+      "jit-cold": 3.3826383540067795,
+      "jit-warm": 3.402458038697095,
+      "vector-cold": 2.997042340587933
+    }
+  }
+}

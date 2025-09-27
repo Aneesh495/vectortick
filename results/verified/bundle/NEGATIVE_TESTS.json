@@ -1,0 +1,25 @@
+{
+  "attacks": [
+    {
+      "case": "delete_required_raw",
+      "reason": "Missing or changed bundle file: jobs/ubuntu-24.04-clang-Release.tar.gz",
+      "rejected": true
+    },
+    {
+      "case": "alter_raw_bytes",
+      "reason": "Missing or changed bundle file: jobs/ubuntu-24.04-clang-Release.tar.gz",
+      "rejected": true
+    },
+    {
+      "case": "modify_source",
+      "reason": "Stale implementation source",
+      "rejected": true
+    },
+    {
+      "case": "zero_native_count_with_updated_hashes",
+      "reason": "Campaign copy differs from actual CTest results",
+      "rejected": true
+    }
+  ],
+  "revision": "da88e01893f9ac61410f470e0a5e1661eeed2976"
+}
