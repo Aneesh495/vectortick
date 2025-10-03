@@ -85,6 +85,11 @@ file(GLOB VT_JIT_SOURCES src/jit/*.cpp)
 file(GLOB_RECURSE VT_REPLAY_SOURCES src/replay/*.cpp)
 file(GLOB_RECURSE VT_METRICS_SOURCES src/metrics/*.cpp)
 
+# Target compile options for narrow hardware features
+if(VT_ARCH_X86_64)
+    set_source_files_properties(src/common/crc32c_sse42.cpp PROPERTIES COMPILE_OPTIONS "-msse4.2")
+endif()
+
 # Architecture-specific JIT sources
 set(VT_JIT_ARCH_SOURCES)
 if(VT_ARCH_X86_64)

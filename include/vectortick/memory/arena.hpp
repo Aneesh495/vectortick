@@ -4,6 +4,9 @@
 #include "../common/status.hpp"
 #include "aligned_buffer.hpp"
 #include <cstddef>
+#include <cstdlib>
+#include <new>
+#include <utility>
 
 namespace vectortick {
 
