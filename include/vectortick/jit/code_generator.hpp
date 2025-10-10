@@ -78,7 +78,12 @@ public:
 private:
     X86Assembler assembler_;
     std::unordered_map<u32, X86Reg> value_to_reg_;
+    std::unordered_map<u32, i32> value_to_slot_;
+    std::unordered_map<u8, u32> reg_to_value_;
+    std::unordered_map<u32, u32> remaining_uses_;
     std::vector<X86Reg> free_regs_;
+    std::vector<i32> free_slots_;
+    i32 next_spill_slot_ = 0;
     
     // Generate prologue
     void emit_prologue() noexcept;
@@ -89,11 +94,13 @@ private:
     // Generate instruction
     [[nodiscard]] Status emit_instruction(const ir::Instruction* instr) noexcept;
     
-    // Register allocation
-    [[nodiscard]] X86Reg allocate_reg() noexcept;
-    void free_reg(X86Reg reg) noexcept;
-    [[nodiscard]] X86Reg get_reg(u32 value_id) noexcept;
-    void set_reg(u32 value_id, X86Reg reg) noexcept;
+    // Register allocation and spilling
+    [[nodiscard]] X86Reg ensure_reg_for_operand(u32 value_id, const std::vector<X86Reg>& pinned = {}) noexcept;
+    [[nodiscard]] X86Reg allocate_reg_for_result(u32 value_id, const std::vector<X86Reg>& pinned = {}) noexcept;
+    void consume_operand(u32 value_id) noexcept;
+    [[nodiscard]] i32 allocate_spill_slot() noexcept;
+    void free_spill_slot(i32 slot) noexcept;
+    void spill_reg(X86Reg reg) noexcept;
 };
 
 // AArch64 code generator
@@ -107,7 +114,12 @@ public:
 private:
     A64Assembler assembler_;
     std::unordered_map<u32, A64Reg> value_to_reg_;
+    std::unordered_map<u32, i32> value_to_slot_;
+    std::unordered_map<u8, u32> reg_to_value_;
+    std::unordered_map<u32, u32> remaining_uses_;
     std::vector<A64Reg> free_regs_;
+    std::vector<i32> free_slots_;
+    i32 next_spill_slot_ = 0;
     
     // Generate prologue
     void emit_prologue() noexcept;
@@ -118,11 +130,13 @@ private:
     // Generate instruction
     [[nodiscard]] Status emit_instruction(const ir::Instruction* instr) noexcept;
     
-    // Register allocation
-    [[nodiscard]] A64Reg allocate_reg() noexcept;
-    void free_reg(A64Reg reg) noexcept;
-    [[nodiscard]] A64Reg get_reg(u32 value_id) noexcept;
-    void set_reg(u32 value_id, A64Reg reg) noexcept;
+    // Register allocation and spilling
+    [[nodiscard]] A64Reg ensure_reg_for_operand(u32 value_id, const std::vector<A64Reg>& pinned = {}) noexcept;
+    [[nodiscard]] A64Reg allocate_reg_for_result(u32 value_id, const std::vector<A64Reg>& pinned = {}) noexcept;
+    void consume_operand(u32 value_id) noexcept;
+    [[nodiscard]] i32 allocate_spill_slot() noexcept;
+    void free_spill_slot(i32 slot) noexcept;
+    void spill_reg(A64Reg reg) noexcept;
 };
 
 // Create appropriate code generator for target

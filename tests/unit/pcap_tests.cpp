@@ -4,6 +4,13 @@
 #include "vectortick/protocol/messages.hpp"
 #include <cstdio>
 #include <vector>
+#include <string>
+#if defined(_WIN32)
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
 
 using namespace vectortick;
 using namespace vectortick::pcap;
@@ -136,8 +143,8 @@ VT_TEST(pcap_tests, parse_synthetic_pcap_packets) {
     
     auto pcap_bytes = make_synthetic_pcap({f1, f2}, false);
     
-    const char* tmp_path = "/tmp/test_synth.pcap";
-    FILE* fp = fopen(tmp_path, "wb");
+    std::string tmp_path = "/tmp/test_synth_" + std::to_string(getpid()) + ".pcap";
+    FILE* fp = fopen(tmp_path.c_str(), "wb");
     VT_ASSERT(fp != nullptr);
     fwrite(pcap_bytes.data(), 1, pcap_bytes.size(), fp);
     fclose(fp);
@@ -170,12 +177,12 @@ VT_TEST(pcap_tests, parse_synthetic_pcap_packets) {
     VT_ASSERT(reader.packets_read() == 2);
     VT_ASSERT(reader.vtp1_frames_found() == 2);
     
-    remove(tmp_path);
+    remove(tmp_path.c_str());
 }
 
 VT_TEST(pcap_tests, parse_vlan_tagged_packet) {
     vtp1::Encoder encoder;
-    CanonicalEvent ev;
+    CanonicalEvent ev{};
     ev.exchange_ts_ns = 1700000000300000000ULL;
     ev.sequence = 10;
     ev.instrument_id = 999;
@@ -190,8 +197,8 @@ VT_TEST(pcap_tests, parse_vlan_tagged_packet) {
     
     auto pcap_bytes = make_synthetic_pcap({f}, true); // with VLAN tag
     
-    const char* tmp_path = "/tmp/test_vlan.pcap";
-    FILE* fp = fopen(tmp_path, "wb");
+    std::string tmp_path = "/tmp/test_vlan_" + std::to_string(getpid()) + ".pcap";
+    FILE* fp = fopen(tmp_path.c_str(), "wb");
     VT_ASSERT(fp != nullptr);
     fwrite(pcap_bytes.data(), 1, pcap_bytes.size(), fp);
     fclose(fp);
@@ -206,11 +213,11 @@ VT_TEST(pcap_tests, parse_vlan_tagged_packet) {
     VT_ASSERT(reader.vtp1_payload_size() == f.size());
     
     vtp1::Decoder decoder;
-    CanonicalEvent decoded;
+    CanonicalEvent decoded{};
     auto dec_st = decoder.decode_frame(reader.vtp1_payload(), reader.vtp1_payload_size(), decoded);
     VT_ASSERT(dec_st.ok());
     VT_ASSERT(decoded.instrument_id == 999);
     VT_ASSERT(decoded.price_ticks == 1000);
     
-    remove(tmp_path);
+    remove(tmp_path.c_str());
 }

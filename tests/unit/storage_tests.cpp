@@ -4,12 +4,19 @@
 #include "vectortick/storage/file_format.hpp"
 #include <cstdio>
 #include <vector>
+#include <string>
+#if defined(_WIN32)
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
 
 using namespace vectortick;
 
 VT_TEST(storage_tests, segment_roundtrip_all_columns) {
-    const char* path = "/tmp/test_roundtrip.vts";
-    remove(path);
+    std::string path = "/tmp/test_roundtrip_" + std::to_string(getpid()) + ".vts";
+    remove(path.c_str());
     
     SegmentWriter writer(42, 1000);
     
@@ -101,14 +108,14 @@ VT_TEST(storage_tests, segment_roundtrip_all_columns) {
     VT_ASSERT(s_err.code() == StatusCode::OutOfRange);
     
     reader.close();
-    remove(path);
+    remove(path.c_str());
 }
 
 VT_TEST(storage_tests, corruption_detection) {
-    const char* orig_path = "/tmp/test_corrupt_orig.vts";
-    const char* test_path = "/tmp/test_corrupt_copy.vts";
-    remove(orig_path);
-    remove(test_path);
+    std::string orig_path = "/tmp/test_corrupt_orig_" + std::to_string(getpid()) + ".vts";
+    std::string test_path = "/tmp/test_corrupt_copy_" + std::to_string(getpid()) + ".vts";
+    remove(orig_path.c_str());
+    remove(test_path.c_str());
     
     SegmentWriter writer(1, 100);
     CanonicalEvent ev;
@@ -120,10 +127,10 @@ VT_TEST(storage_tests, corruption_detection) {
     ev.price_ticks = 100;
     ev.quantity = 10;
     VT_ASSERT(writer.add_event(ev).ok());
-    VT_ASSERT(writer.write_to_file(orig_path).ok());
+    VT_ASSERT(writer.write_to_file(orig_path.c_str()).ok());
     
     // Read file bytes into memory
-    FILE* fp = fopen(orig_path, "rb");
+    FILE* fp = fopen(orig_path.c_str(), "rb");
     VT_ASSERT(fp != nullptr);
     fseek(fp, 0, SEEK_END);
     usize sz = ftell(fp);
@@ -139,7 +146,7 @@ VT_TEST(storage_tests, corruption_detection) {
         bad_magic[1] = 'A';
         bad_magic[2] = 'D';
         bad_magic[3] = '!';
-        FILE* out = fopen(test_path, "wb");
+        FILE* out = fopen(test_path.c_str(), "wb");
         fwrite(bad_magic.data(), 1, bad_magic.size(), out);
         fclose(out);
         
@@ -147,7 +154,7 @@ VT_TEST(storage_tests, corruption_detection) {
         auto st = r.open(test_path);
         VT_ASSERT(!st.ok());
         VT_ASSERT(st.code() == StatusCode::SegmentInvalidHeader);
-        remove(test_path);
+        remove(test_path.c_str());
     }
     
     // 2. Corrupt schema hash
@@ -160,7 +167,7 @@ VT_TEST(storage_tests, corruption_detection) {
         hdr->header_crc = 0;
         hdr->header_crc = Crc32C::compute(bad_schema.data(), vts1::SegmentHeader::Size);
         
-        FILE* out = fopen(test_path, "wb");
+        FILE* out = fopen(test_path.c_str(), "wb");
         fwrite(bad_schema.data(), 1, bad_schema.size(), out);
         fclose(out);
         
@@ -168,7 +175,7 @@ VT_TEST(storage_tests, corruption_detection) {
         auto st = r.open(test_path);
         VT_ASSERT(!st.ok());
         VT_ASSERT(st.code() == StatusCode::SegmentSchemaMismatch);
-        remove(test_path);
+        remove(test_path.c_str());
     }
     
     // 3. Corrupt column data CRC
@@ -179,7 +186,7 @@ VT_TEST(storage_tests, corruption_detection) {
         // Corrupt first byte of column 0 data
         bad_col[desc[0].offset] ^= 0xFF;
         
-        FILE* out = fopen(test_path, "wb");
+        FILE* out = fopen(test_path.c_str(), "wb");
         fwrite(bad_col.data(), 1, bad_col.size(), out);
         fclose(out);
         
@@ -190,8 +197,8 @@ VT_TEST(storage_tests, corruption_detection) {
         VT_ASSERT(!val_st.ok());
         VT_ASSERT(val_st.code() == StatusCode::SegmentChecksumFailed);
         r.close();
-        remove(test_path);
+        remove(test_path.c_str());
     }
     
-    remove(orig_path);
+    remove(orig_path.c_str());
 }

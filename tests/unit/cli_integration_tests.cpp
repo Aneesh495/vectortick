@@ -8,6 +8,9 @@
 #include <array>
 #include <memory>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 using namespace vectortick;
 using namespace vectortick::test;
@@ -15,14 +18,34 @@ using namespace vectortick::test;
 namespace {
 
 std::string find_bin(const std::string& name) {
+#if defined(__APPLE__)
+    char path[1024];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        std::string dir = std::filesystem::path(path).parent_path().string();
+        if (std::filesystem::exists(dir + "/" + name)) {
+            return dir + "/" + name;
+        }
+    }
+#elif defined(__linux__)
+    char path[1024];
+    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (len > 0) {
+        path[len] = '\0';
+        std::string dir = std::filesystem::path(path).parent_path().string();
+        if (std::filesystem::exists(dir + "/" + name)) {
+            return dir + "/" + name;
+        }
+    }
+#endif
     if (std::filesystem::exists("./bin/" + name)) {
         return "./bin/" + name;
     }
-    if (std::filesystem::exists("./build/bin/" + name)) {
-        return "./build/bin/" + name;
+    if (std::filesystem::exists("./build-baseline/bin/" + name)) {
+        return "./build-baseline/bin/" + name;
     }
-    if (std::filesystem::exists("../build/bin/" + name)) {
-        return "../build/bin/" + name;
+    if (std::filesystem::exists("../bin/" + name)) {
+        return "../bin/" + name;
     }
     return name;
 }
@@ -66,7 +89,7 @@ void make_cli_segment(const std::string& path, usize count) {
 }
 
 std::string unique_test_path(const std::string& prefix, const std::string& ext) {
-    return prefix + "_" + std::to_string(getpid()) + ext;
+    return (std::filesystem::temp_directory_path() / (prefix + "_" + std::to_string(getpid()) + ext)).string();
 }
 
 } // namespace

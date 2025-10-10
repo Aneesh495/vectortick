@@ -200,6 +200,37 @@ public:
         emit_mem_operand(src, base, offset);
     }
     
+    // mov r32, [mem] with displacement (zero-extends to 64-bit)
+    void mov_r32_mem(X86Reg dst, X86Reg base, i32 offset = 0) {
+        emit_rex32(dst, base);
+        emit(0x8B);  // MOV r32, r/m32
+        emit_mem_operand(dst, base, offset);
+    }
+    
+    // movzx r64, word [mem] (zero-extend 16-bit to 64-bit)
+    void movzx_r64_mem16(X86Reg dst, X86Reg base, i32 offset = 0) {
+        emit_rex64(dst, base);
+        emit(0x0F);
+        emit(0xB7);  // MOVZX r64, r/m16
+        emit_mem_operand(dst, base, offset);
+    }
+    
+    // movzx r64, byte [mem] (zero-extend 8-bit to 64-bit)
+    void movzx_r64_mem8(X86Reg dst, X86Reg base, i32 offset = 0) {
+        emit_rex64(dst, base);
+        emit(0x0F);
+        emit(0xB6);  // MOVZX r64, r/m8
+        emit_mem_operand(dst, base, offset);
+    }
+    
+    // movzx r64, r8 (zero-extend 8-bit register to 64-bit)
+    void movzx_r64_r8(X86Reg dst, X86Reg src) {
+        emit_rex64(dst, src);
+        emit(0x0F);
+        emit(0xB6);  // MOVZX r64, r/m8
+        emit(modrm(3, dst, src));
+    }
+    
     // === Arithmetic instructions ===
     
     // add r64, imm32 (sign-extended to 64)
@@ -251,6 +282,40 @@ public:
         emit_rex64(src, dst);
         emit(0x09);  // OR r/m64, r64
         emit(modrm(3, src, dst));
+    }
+    
+    // div r64 (unsigned divide RDX:RAX by r64; quotient in RAX, remainder in RDX)
+    void div_r64(X86Reg divisor) {
+        emit_rex64_b(divisor);
+        emit(0xF7);
+        emit(modrm(3, static_cast<u8>(6), divisor));
+    }
+    
+    // idiv r64 (signed divide RDX:RAX by r64; quotient in RAX, remainder in RDX)
+    void idiv_r64(X86Reg divisor) {
+        emit_rex64_b(divisor);
+        emit(0xF7);
+        emit(modrm(3, static_cast<u8>(7), divisor));
+    }
+    
+    // cqo (sign-extend RAX into RDX:RAX)
+    void cqo() {
+        emit(0x48);
+        emit(0x99);
+    }
+    
+    // neg r64 (two's complement negation)
+    void neg_r64(X86Reg dst) {
+        emit_rex64_b(dst);
+        emit(0xF7);
+        emit(modrm(3, static_cast<u8>(3), dst));
+    }
+    
+    // not r64 (one's complement bitwise not)
+    void not_r64(X86Reg dst) {
+        emit_rex64_b(dst);
+        emit(0xF7);
+        emit(modrm(3, static_cast<u8>(2), dst));
     }
     
     // cmp r64, r64
