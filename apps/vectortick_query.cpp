@@ -8,6 +8,7 @@
 #include "vectortick/execution/query_result.hpp"
 #include "vectortick/execution/vector_executor.hpp"
 #include "vectortick/execution/reference_executor.hpp"
+#include "vectortick/execution/jit_executor.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -180,8 +181,8 @@ int main(int argc, char* argv[]) {
         ReferenceExecutor exec;
         res = exec.execute(reader, q_ast);
     } else if (engine == "jit") {
-        std::cerr << "Execution Error: JIT engine execution mode integration in progress\n";
-        return 1;
+        JitExecutor exec;
+        res = exec.execute(reader, q_ast);
     }
 
     if (!res.ok()) {

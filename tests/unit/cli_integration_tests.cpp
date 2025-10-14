@@ -137,6 +137,26 @@ VT_TEST(cli_integration_tests, query_filter_and_aggregates) {
     VT_ASSERT(out.find("COUNT()") != std::string::npos);
     VT_ASSERT(out.find("SUM()") != std::string::npos);
 
+    // JIT engine test
+    std::string jit_out = exec_cmd(find_bin("vectortick_query") + " -e jit " + seg_file + " \"SELECT COUNT(*), SUM(quantity) WHERE price_ticks > 12000\"", code);
+    VT_ASSERT_EQ(code, 0);
+    VT_ASSERT(jit_out.find("COUNT()") != std::string::npos);
+    VT_ASSERT(jit_out.find("SUM()") != std::string::npos);
+
+    // JIT JSON output test
+    std::string json_jit_out = unique_test_path("test_query_jit_out", ".json");
+    out = exec_cmd(find_bin("vectortick_query") + " -e jit --json " + json_jit_out + " " + seg_file + " \"SELECT instrument_id, price_ticks LIMIT 2\"", code);
+    VT_ASSERT_EQ(code, 0);
+    VT_ASSERT(std::filesystem::exists(json_jit_out));
+    {
+        std::ifstream in(json_jit_out);
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        VT_ASSERT(content.find("\"engine\": \"jit\"") != std::string::npos);
+        VT_ASSERT(content.find("\"name\": \"instrument_id\"") != std::string::npos);
+        VT_ASSERT(content.find("\"rows\":") != std::string::npos);
+    }
+    std::filesystem::remove(json_jit_out, ec);
+
     // JSON output test
     std::string json_out = unique_test_path("test_query_out", ".json");
     out = exec_cmd(find_bin("vectortick_query") + " --json " + json_out + " " + seg_file + " \"SELECT instrument_id, price_ticks LIMIT 2\"", code);
