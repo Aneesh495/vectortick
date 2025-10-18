@@ -2,6 +2,10 @@
 #include "vectortick/jit/jit_compiler.hpp"
 #include "vectortick/jit/code_generator.hpp"
 #include "vectortick/execution/reference_interpreter.hpp"
+#include "vectortick/execution/jit_executor.hpp"
+#include "vectortick/execution/reference_executor.hpp"
+#include "vectortick/query/parser.hpp"
+#include "../oracle/query_oracle.hpp"
 #include "vectortick/ir/builder.hpp"
 
 using namespace vectortick;
@@ -387,3 +391,64 @@ VT_TEST(jit_differential_tests, host_jit_high_register_pressure_spilling) {
     VT_ASSERT(a64_res.ok());
     VT_ASSERT(a64_res.value().size() > 0);
 }
+
+VT_TEST(jit_differential_tests, host_jit_query_oracle_crosscheck) {
+    std::vector<CanonicalEvent> events;
+    for (size_t i = 0; i < 200; ++i) {
+        CanonicalEvent ev = event::make_empty_event();
+        ev.sequence = i + 1;
+        ev.instrument_id = (i % 3 == 0) ? 100 : ((i % 3 == 1) ? 200 : 300);
+        ev.event_type = EventType::Trade;
+        ev.side = Side::Bid;
+        ev.price_ticks = 5000 + static_cast<i64>(i * 25);
+        ev.quantity = static_cast<u32>(1 + (i % 10));
+        events.push_back(ev);
+    }
+
+    const char* queries[] = {
+        "SELECT instrument_id, price_ticks, quantity WHERE price_ticks > 6000 LIMIT 20",
+        "SELECT COUNT(*), SUM(quantity), MIN(price_ticks), MAX(price_ticks) WHERE instrument_id = 200",
+        "SELECT instrument_id, price_ticks ORDER BY price_ticks DESC LIMIT 15",
+        "SELECT instrument_id, COUNT(*), SUM(quantity) GROUP BY instrument_id ORDER BY instrument_id ASC",
+        "SELECT * WHERE price_ticks >= 7000 AND quantity > 5 LIMIT 10"
+    };
+
+    JitExecutor jit_exec;
+    ReferenceExecutor ref_exec;
+
+    for (const char* sql : queries) {
+        query::Parser p(sql);
+        auto q = p.parse_query();
+        VT_ASSERT(q.ok());
+
+        auto jit_res = jit_exec.execute_events(events, q.value().get());
+        VT_ASSERT(jit_res.ok());
+
+        auto ref_res = ref_exec.execute_events(events, q.value().get());
+        VT_ASSERT(ref_res.ok());
+
+        auto oracle_res = test::QueryOracle::evaluate(events, q.value().get());
+        VT_ASSERT(oracle_res.ok());
+
+        const auto& j = jit_res.value();
+        const auto& r = ref_res.value();
+        const auto& o = oracle_res.value();
+
+        VT_ASSERT_EQ(j.rows_scanned, o.rows_scanned);
+        VT_ASSERT_EQ(j.rows_matched, o.rows_matched);
+        VT_ASSERT_EQ(j.column_names.size(), o.column_names.size());
+        for (size_t c = 0; c < j.column_names.size(); ++c) {
+            VT_ASSERT_EQ(j.column_names[c], o.column_names[c]);
+            VT_ASSERT(j.column_types[c] == o.column_types[c]);
+        }
+        VT_ASSERT_EQ(j.rows.size(), o.rows.size());
+        for (size_t row_i = 0; row_i < j.rows.size(); ++row_i) {
+            VT_ASSERT_EQ(j.rows[row_i].size(), o.rows[row_i].size());
+            for (size_t col_i = 0; col_i < j.rows[row_i].size(); ++col_i) {
+                VT_ASSERT_EQ(j.rows[row_i][col_i], o.rows[row_i][col_i]);
+                VT_ASSERT_EQ(j.rows[row_i][col_i], r.rows[row_i][col_i]);
+            }
+        }
+    }
+}
+
