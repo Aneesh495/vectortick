@@ -114,7 +114,7 @@ VT_TEST(pcap_tests, parse_synthetic_pcap_packets) {
     // Create 2 VTP1 frames
     vtp1::Encoder encoder;
     
-    CanonicalEvent ev1;
+    CanonicalEvent ev1{};
     ev1.exchange_ts_ns = 1700000000100000000ULL;
     ev1.sequence = 1;
     ev1.instrument_id = 10;
@@ -127,7 +127,7 @@ VT_TEST(pcap_tests, parse_synthetic_pcap_packets) {
     VT_ASSERT(enc1.ok());
     std::vector<byte> f1(buf1, buf1 + enc1.value());
     
-    CanonicalEvent ev2;
+    CanonicalEvent ev2{};
     ev2.exchange_ts_ns = 1700000000200000000ULL;
     ev2.sequence = 2;
     ev2.instrument_id = 10;

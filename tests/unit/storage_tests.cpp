@@ -22,7 +22,7 @@ VT_TEST(storage_tests, segment_roundtrip_all_columns) {
     
     std::vector<CanonicalEvent> original_events;
     for (usize i = 0; i < 50; ++i) {
-        CanonicalEvent ev;
+        CanonicalEvent ev{};
         ev.exchange_ts_ns = 1700000000000000000ULL + i * 1000000ULL;
         ev.receive_ts_ns = ev.exchange_ts_ns + 500;
         ev.sequence = 1000 + i;
@@ -89,7 +89,7 @@ VT_TEST(storage_tests, segment_roundtrip_all_columns) {
     }
     
     // Test random single row access
-    CanonicalEvent single_ev;
+    CanonicalEvent single_ev{};
     auto s1 = reader.read_event(0, single_ev);
     VT_ASSERT(s1.ok());
     VT_ASSERT(single_ev.sequence == original_events[0].sequence);
@@ -118,12 +118,15 @@ VT_TEST(storage_tests, corruption_detection) {
     remove(test_path.c_str());
     
     SegmentWriter writer(1, 100);
-    CanonicalEvent ev;
+    CanonicalEvent ev{};
     ev.exchange_ts_ns = 1000;
     ev.receive_ts_ns = 1001;
     ev.sequence = 1;
     ev.instrument_id = 1;
     ev.event_type = EventType::Trade;
+    ev.side = Side::Bid;
+    ev.venue_id = 1;
+    ev.source_id = 1;
     ev.price_ticks = 100;
     ev.quantity = 10;
     VT_ASSERT(writer.add_event(ev).ok());

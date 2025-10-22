@@ -132,7 +132,7 @@ VT_TEST(protocol_tests, sequence_non_monotonic_rejected) {
     VT_ASSERT(enc1.ok());
     
     Decoder decoder;
-    CanonicalEvent dec1;
+    CanonicalEvent dec1{};
     auto res1 = decoder.decode_frame(buf1, enc1.value(), dec1);
     VT_ASSERT(res1.ok());
     
@@ -143,7 +143,7 @@ VT_TEST(protocol_tests, sequence_non_monotonic_rejected) {
     auto enc2 = encoder.encode_event(ev2, buf2, sizeof(buf2), 1);
     VT_ASSERT(enc2.ok());
     
-    CanonicalEvent dec2;
+    CanonicalEvent dec2{};
     auto res2 = decoder.decode_frame(buf2, enc2.value(), dec2);
     VT_ASSERT(!res2.ok());
     VT_ASSERT(res2.status().code() == StatusCode::SequenceNotMonotonic);

@@ -60,6 +60,11 @@ Result<MappedFile> MappedFile::open_read(const std::string& path) noexcept {
     }
     
     usize size = static_cast<usize>(st.st_size);
+    if (size == 0) {
+        ::close(fd);
+        return make_error<MappedFile>(StatusCode::InvalidArgument,
+                                       "Cannot map empty file");
+    }
     
     void* addr = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (addr == MAP_FAILED) {

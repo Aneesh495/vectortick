@@ -5,7 +5,8 @@ namespace vectortick {
 namespace ir {
 
 Function* Builder::create_function(const std::string& name) {
-    function_ = new Function(name);
+    owned_function_ = std::make_unique<Function>(name);
+    function_ = owned_function_.get();
     next_temp_ = 1;
     current_block_ = function_->create_block("entry");
     return function_;
@@ -376,8 +377,8 @@ std::unique_ptr<Function> Builder::build_from_query(const query::QueryStmt* stmt
     if (!stmt) return nullptr;
     
     // Create function
-    auto func = std::make_unique<Function>("query");
-    function_ = func.get();
+    owned_function_ = std::make_unique<Function>("query");
+    function_ = owned_function_.get();
     
     // Create entry block
     current_block_ = function_->create_block("entry");
@@ -416,7 +417,7 @@ std::unique_ptr<Function> Builder::build_from_query(const query::QueryStmt* stmt
             else if (fname == "max") agg_result = create_max(arg, atype);
         }
         create_return(agg_result);
-        return func;
+        return std::move(owned_function_);
     }
     
     // Lower WHERE clause if present
@@ -432,7 +433,7 @@ std::unique_ptr<Function> Builder::build_from_query(const query::QueryStmt* stmt
         create_return(one);
     }
     
-    return func;
+    return std::move(owned_function_);
 }
 
 Type Builder::infer_type(const query::Expression* expr) const {
