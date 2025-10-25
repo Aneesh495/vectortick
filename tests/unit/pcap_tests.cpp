@@ -146,7 +146,8 @@ VT_TEST(pcap_tests, parse_synthetic_pcap_packets) {
     std::string tmp_path = "/tmp/test_synth_" + std::to_string(getpid()) + ".pcap";
     FILE* fp = fopen(tmp_path.c_str(), "wb");
     VT_ASSERT(fp != nullptr);
-    fwrite(pcap_bytes.data(), 1, pcap_bytes.size(), fp);
+    size_t nw = fwrite(pcap_bytes.data(), 1, pcap_bytes.size(), fp);
+    VT_ASSERT_EQ(nw, pcap_bytes.size());
     fclose(fp);
     
     PcapReader reader;
@@ -200,7 +201,8 @@ VT_TEST(pcap_tests, parse_vlan_tagged_packet) {
     std::string tmp_path = "/tmp/test_vlan_" + std::to_string(getpid()) + ".pcap";
     FILE* fp = fopen(tmp_path.c_str(), "wb");
     VT_ASSERT(fp != nullptr);
-    fwrite(pcap_bytes.data(), 1, pcap_bytes.size(), fp);
+    size_t nw = fwrite(pcap_bytes.data(), 1, pcap_bytes.size(), fp);
+    VT_ASSERT_EQ(nw, pcap_bytes.size());
     fclose(fp);
     
     PcapReader reader;
