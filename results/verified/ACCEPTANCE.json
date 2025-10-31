@@ -1,7 +1,7 @@
 {
   "status": "PASSED",
   "commit": "3a4eec012b00e1130ec0afc7cf835be26016f76d",
-  "platform": "macOS-26.7-arm64-arm-64bit-Mach-O",
+  "platform": "macOS-arm64-Mach-O",
   "machine": "arm64",
   "processor": "arm",
   "benchmarks": {

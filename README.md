@@ -27,7 +27,7 @@ It features wire-speed PCAP ingestion, durable VTS1 columnar segments with hardw
 
 ## Verified Performance
 
-The following metrics were measured on an Apple Silicon host (`Darwin arm64`, AppleClang 21.0, Release build):
+The following metrics were measured on an Apple Silicon host (`Darwin arm64`, AppleClang, Release build):
 
 | Benchmark Stage | Measured Throughput | Description |
 |---|---|---|
