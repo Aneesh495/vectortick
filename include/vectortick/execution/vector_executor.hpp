@@ -6,6 +6,7 @@
 #include "vectortick/model/event.hpp"
 #include "vectortick/storage/segment_reader.hpp"
 #include "vectortick/query/ast.hpp"
+#include "vectortick/execution/query_result.hpp"
 
 #include <vector>
 #include <string>
@@ -40,14 +41,6 @@ struct ColumnBatch {
     u16 venue_id[SelectionVector::MaxBatchSize];
     u16 source_id[SelectionVector::MaxBatchSize];
     u64 trade_or_order_id[SelectionVector::MaxBatchSize];
-};
-
-struct QueryResult {
-    std::vector<std::string> column_names;
-    std::vector<std::vector<std::string>> rows;
-    u64 rows_scanned{0};
-    u64 rows_matched{0};
-    u64 execution_time_ns{0};
 };
 
 enum class SimdArch {

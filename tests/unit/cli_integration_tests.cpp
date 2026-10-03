@@ -108,6 +108,34 @@ VT_TEST(cli_integration_tests, query_filter_and_aggregates) {
     VT_ASSERT_EQ(code, 0);
     VT_ASSERT(out.find("instrument_id") != std::string::npos);
 
+    // Interpreter engine test
+    out = exec_cmd(find_bin("vectortick_query") + " -e interpreter " + seg_file + " \"SELECT COUNT(*), SUM(quantity) WHERE price_ticks > 12000\"", code);
+    VT_ASSERT_EQ(code, 0);
+    VT_ASSERT(out.find("COUNT()") != std::string::npos);
+    VT_ASSERT(out.find("SUM()") != std::string::npos);
+
+    // JSON output test
+    std::string json_out = unique_test_path("test_query_out", ".json");
+    out = exec_cmd(find_bin("vectortick_query") + " --json " + json_out + " " + seg_file + " \"SELECT instrument_id, price_ticks LIMIT 2\"", code);
+    VT_ASSERT_EQ(code, 0);
+    VT_ASSERT(std::filesystem::exists(json_out));
+    {
+        std::ifstream in(json_out);
+        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        VT_ASSERT(content.find("\"engine\": \"vector\"") != std::string::npos);
+        VT_ASSERT(content.find("\"name\": \"instrument_id\"") != std::string::npos);
+        VT_ASSERT(content.find("\"rows\":") != std::string::npos);
+    }
+    std::filesystem::remove(json_out, ec);
+
+    // Invalid engine test (must exit nonzero)
+    out = exec_cmd(find_bin("vectortick_query") + " -e nonexistent " + seg_file + " \"SELECT *\"", code);
+    VT_ASSERT(code != 0);
+
+    // Invalid limit test (must exit nonzero)
+    out = exec_cmd(find_bin("vectortick_query") + " -l notanumber " + seg_file + " \"SELECT *\"", code);
+    VT_ASSERT(code != 0);
+
     std::filesystem::remove(seg_file, ec);
 }
 

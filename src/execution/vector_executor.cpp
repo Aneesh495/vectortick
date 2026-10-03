@@ -1,8 +1,11 @@
 #include "vectortick/execution/vector_executor.hpp"
+#include "vectortick/query/type_checker.hpp"
 #include <chrono>
 #include <cstring>
 #include <algorithm>
 #include <unordered_map>
+#include <charconv>
+#include <cctype>
 
 #if defined(__ARM_NEON)
 #include <arm_neon.h>
@@ -380,20 +383,39 @@ Result<QueryResult> VectorExecutor::execute_events(const std::vector<CanonicalEv
         }
     }
 
-    // Column names for output
+    query::TypeChecker type_checker;
     for (const auto& item : query_ast->projections) {
-        if (!item.alias.empty()) {
+        if (item.is_wildcard) {
+            result.column_names.push_back("sequence");
+            result.column_types.push_back(vts1::ColumnType::U64);
+            result.column_names.push_back("instrument_id");
+            result.column_types.push_back(vts1::ColumnType::U32);
+            result.column_names.push_back("price_ticks");
+            result.column_types.push_back(vts1::ColumnType::I64);
+            result.column_names.push_back("quantity");
+            result.column_types.push_back(vts1::ColumnType::U32);
+        } else if (!item.alias.empty()) {
             result.column_names.push_back(item.alias);
-        } else if (item.is_wildcard) {
-            result.column_names.push_back("*");
+            auto ty = type_checker.check_expression(item.expr.get());
+            result.column_types.push_back(ty.ok() ? ty.value() : vts1::ColumnType::U64);
         } else if (item.expr && item.expr->type == query::ExprType::ColumnRef) {
             const auto* cr = static_cast<const query::ColumnRefExpr*>(item.expr.get());
             result.column_names.push_back(cr->name);
+            auto ty = type_checker.check_expression(item.expr.get());
+            result.column_types.push_back(ty.ok() ? ty.value() : vts1::ColumnType::U64);
         } else if (item.expr && item.expr->type == query::ExprType::FunctionCall) {
             const auto* fc = static_cast<const query::FunctionCallExpr*>(item.expr.get());
             result.column_names.push_back(fc->name + "()");
+            auto ty = type_checker.check_expression(item.expr.get());
+            result.column_types.push_back(ty.ok() ? ty.value() : vts1::ColumnType::U64);
         } else {
             result.column_names.push_back("col");
+            if (item.expr) {
+                auto ty = type_checker.check_expression(item.expr.get());
+                result.column_types.push_back(ty.ok() ? ty.value() : vts1::ColumnType::U64);
+            } else {
+                result.column_types.push_back(vts1::ColumnType::U64);
+            }
         }
     }
 
@@ -473,11 +495,11 @@ Result<QueryResult> VectorExecutor::execute_events(const std::vector<CanonicalEv
                 }
                 result.rows.push_back(std::move(row));
 
-                if (query_ast->limit > 0 && result.rows.size() >= query_ast->limit) {
+                if (query_ast->order_by.empty() && query_ast->limit > 0 && result.rows.size() >= query_ast->limit) {
                     break;
                 }
             }
-            if (query_ast->limit > 0 && result.rows.size() >= query_ast->limit) {
+            if (query_ast->order_by.empty() && query_ast->limit > 0 && result.rows.size() >= query_ast->limit) {
                 break;
             }
         }
@@ -521,6 +543,63 @@ Result<QueryResult> VectorExecutor::execute_events(const std::vector<CanonicalEv
             }
         }
         result.rows.push_back(std::move(agg_row));
+    }
+ 
+    if (!query_ast->order_by.empty() && !result.rows.empty()) {
+        struct OrderCol {
+            size_t col_idx = 0;
+            bool ascending = true;
+            bool is_signed = false;
+        };
+        std::vector<OrderCol> order_cols;
+
+        auto ieq = [](std::string_view a, std::string_view b) {
+            if (a.size() != b.size()) return false;
+            for (size_t i = 0; i < a.size(); ++i) {
+                if (std::toupper(static_cast<unsigned char>(a[i])) !=
+                    std::toupper(static_cast<unsigned char>(b[i]))) return false;
+            }
+            return true;
+        };
+
+        for (const auto& [col_name, ascending] : query_ast->order_by) {
+            for (size_t i = 0; i < result.column_names.size(); ++i) {
+                if (ieq(result.column_names[i], col_name)) {
+                    bool is_signed = (i < result.column_types.size() &&
+                                      result.column_types[i] == vts1::ColumnType::I64);
+                    order_cols.push_back({i, ascending, is_signed});
+                    break;
+                }
+            }
+        }
+
+        if (!order_cols.empty()) {
+            std::stable_sort(result.rows.begin(), result.rows.end(), [&](const std::vector<std::string>& a, const std::vector<std::string>& b) {
+                for (const auto& oc : order_cols) {
+                    if (oc.col_idx >= a.size() || oc.col_idx >= b.size()) continue;
+                    const auto& sa = a[oc.col_idx];
+                    const auto& sb = b[oc.col_idx];
+                    if (sa == sb) continue;
+
+                    if (oc.is_signed) {
+                        int64_t va = 0, vb = 0;
+                        std::from_chars(sa.data(), sa.data() + sa.size(), va);
+                        std::from_chars(sb.data(), sb.data() + sb.size(), vb);
+                        return oc.ascending ? (va < vb) : (va > vb);
+                    } else {
+                        uint64_t va = 0, vb = 0;
+                        std::from_chars(sa.data(), sa.data() + sa.size(), va);
+                        std::from_chars(sb.data(), sb.data() + sb.size(), vb);
+                        return oc.ascending ? (va < vb) : (va > vb);
+                    }
+                }
+                return false;
+            });
+        }
+    }
+
+    if (query_ast->limit > 0 && result.rows.size() > query_ast->limit) {
+        result.rows.resize(query_ast->limit);
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();
