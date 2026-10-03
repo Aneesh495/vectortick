@@ -2,6 +2,8 @@
 
 #include "../common/types.hpp"
 #include "../common/status.hpp"
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <new>
 
