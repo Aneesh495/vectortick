@@ -90,13 +90,9 @@ if(VT_ARCH_X86_64)
     set_source_files_properties(src/common/crc32c_sse42.cpp PROPERTIES COMPILE_OPTIONS "-msse4.2")
 endif()
 
-# Architecture-specific JIT sources
+# JIT code generator sources (both backends are portable C++ bytecode emitters)
 set(VT_JIT_ARCH_SOURCES)
-if(VT_ARCH_X86_64)
-    file(GLOB_RECURSE VT_JIT_ARCH_SOURCES src/jit/x64/*.cpp)
-elseif(VT_ARCH_AARCH64)
-    file(GLOB_RECURSE VT_JIT_ARCH_SOURCES src/jit/a64/*.cpp)
-endif()
+file(GLOB_RECURSE VT_JIT_ARCH_SOURCES src/jit/x64/*.cpp src/jit/a64/*.cpp)
 
 # Assembly sources
 set(VT_ASM_SOURCES)

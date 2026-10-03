@@ -366,6 +366,19 @@ Status ReferenceInterpreter::execute_instruction(const ir::Instruction* instr,
             break;
         }
         
+        case ir::Opcode::ModI64: {
+            u64 lhs_u = 0, rhs_u = 0;
+            if (auto st = get_val(instr->operand(0), lhs_u); !st.ok()) return st;
+            if (auto st = get_val(instr->operand(1), rhs_u); !st.ok()) return st;
+            i64 lhs = static_cast<i64>(lhs_u);
+            i64 rhs = static_cast<i64>(rhs_u);
+            if (rhs == 0) {
+                return Status(StatusCode::InternalError, "Modulo by zero");
+            }
+            values_[result] = static_cast<u64>(lhs % rhs);
+            break;
+        }
+        
         case ir::Opcode::NegI64: {
             u64 val_u = 0;
             if (auto st = get_val(instr->operand(0), val_u); !st.ok()) return st;

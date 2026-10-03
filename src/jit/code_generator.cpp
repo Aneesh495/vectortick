@@ -40,17 +40,12 @@ void CodeGenerator::build_interference(const ir::Function* function) noexcept {
 // === Factory implementations ===
 
 std::unique_ptr<CodeGenerator> create_generator(TargetArch arch) {
-#if defined(__x86_64__) || defined(_M_X64)
     if (arch == TargetArch::X86_64) {
         return std::make_unique<X86CodeGenerator>();
     }
-#elif defined(__aarch64__) || defined(_M_ARM64)
     if (arch == TargetArch::AArch64) {
         return std::make_unique<A64CodeGenerator>();
     }
-#else
-    (void)arch;
-#endif
     return nullptr;
 }
 

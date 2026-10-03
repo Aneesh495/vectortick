@@ -190,6 +190,11 @@ public:
         emit(0x9AC00C00 | (r_idx(src2) << 16) | (r_idx(src1) << 5) | r_idx(dst));
     }
     
+    // msub xD, xN, xM, xA (Xd = Xa - Xn * Xm)
+    void msub_x64(A64Reg dst, A64Reg src1, A64Reg src2, A64Reg src_add) {
+        emit(0x9B008000 | (r_idx(src2) << 16) | (r_idx(src_add) << 10) | (r_idx(src1) << 5) | r_idx(dst));
+    }
+    
     // and xD, xN, xM
     void and_x64_x64_x64(A64Reg dst, A64Reg src1, A64Reg src2) {
         emit(0x8A000000 | (r_idx(src2) << 16) | (r_idx(src1) << 5) | r_idx(dst));
