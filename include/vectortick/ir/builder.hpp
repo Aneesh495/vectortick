@@ -94,6 +94,7 @@ private:
     Opcode get_comparison_opcode(query::TokenType op, Type type) const;
     Opcode get_arithmetic_opcode(query::TokenType op, Type type) const;
     
+    std::unique_ptr<Function> owned_function_;
     Function* function_;
     BasicBlock* current_block_;
     u32 next_temp_;

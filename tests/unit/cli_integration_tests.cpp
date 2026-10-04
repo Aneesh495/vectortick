@@ -212,6 +212,9 @@ VT_TEST(cli_integration_tests, bench_json_generation) {
 
     int code = 0;
     std::string out = exec_cmd(find_bin("vectortick_bench") + " --json " + json_file, code);
+    if (code != 0) {
+        std::cerr << "vectortick_bench failed (code " << code << "):\n" << out << "\n";
+    }
     VT_ASSERT_EQ(code, 0);
     VT_ASSERT(std::filesystem::exists(json_file));
 

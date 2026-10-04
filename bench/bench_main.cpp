@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstring>
+#include <unistd.h>
 
 using namespace vectortick;
 
@@ -181,7 +182,7 @@ void bench_vector_execution() {
 
 void bench_storage_and_replay() {
     constexpr usize N = 50000;
-    std::string seg_file = "bench_temp.vts";
+    std::string seg_file = (std::filesystem::temp_directory_path() / ("bench_temp_" + std::to_string(getpid()) + ".vts")).string();
     std::error_code ec;
     std::filesystem::remove(seg_file, ec);
 
@@ -203,7 +204,11 @@ void bench_storage_and_replay() {
             ev.quantity = 100;
             (void)writer.add_event(ev);
         }
-        (void)writer.write_to_file(seg_file);
+        auto w_st = writer.write_to_file(seg_file);
+        if (!w_st.ok()) {
+            std::cerr << "Failed to write bench segment: " << w_st.message() << "\n";
+            return;
+        }
     }
     double elapsed_write = timer_write.elapsed_sec();
     double write_mops = (N / elapsed_write) / 1e6;
@@ -211,10 +216,14 @@ void bench_storage_and_replay() {
     std::cout << "  Columnar Write: " << std::fixed << std::setprecision(2) << write_mops << " M events/sec\n";
 
     Timer timer_read;
-    SegmentReader reader;
-    (void)reader.open(seg_file);
-    std::vector<CanonicalEvent> read_events;
-    (void)reader.read_all_events(read_events);
+    {
+        SegmentReader reader;
+        auto o_st = reader.open(seg_file);
+        if (o_st.ok()) {
+            std::vector<CanonicalEvent> read_events;
+            (void)reader.read_all_events(read_events);
+        }
+    }
     double elapsed_read = timer_read.elapsed_sec();
     double read_mops = (N / elapsed_read) / 1e6;
     g_metrics.storage_read_mops = read_mops;
@@ -230,7 +239,6 @@ void bench_storage_and_replay() {
     g_metrics.replay_mops = replay_mops;
     std::cout << "  Replay Speed:   " << std::fixed << std::setprecision(2) << replay_mops << " M events/sec\n\n";
 
-    reader.close();
     std::filesystem::remove(seg_file, ec);
 }
 
