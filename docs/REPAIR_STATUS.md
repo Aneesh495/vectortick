@@ -1,9 +1,9 @@
 # VectorTick Repair and Completion Status
 
 **Status**: **100% COMPLETE & VERIFIED**  
-**Host Architecture**: `Darwin arm64 (Apple Silicon, macOS 26.6.0)`  
-**Compiler**: `Apple clang version 21.0.0 (clang-2100.3.34.2), Target: arm64-apple-darwin25.6.0`  
-**CMake**: `4.0.3`  
+**Host Architecture**: `Darwin arm64 (Apple Silicon)`  
+**Compiler**: `AppleClang (C++20), Target: arm64-apple-darwin`  
+**CMake**: `3.24+`  
 **Substantive Code**: 13,559 lines of C++20 across 93 files  
 **Test Status**: 18/18 CTest suites passed (67/67 unit tests), ASan + UBSan 100% clean  
 
@@ -61,7 +61,7 @@ All mandatory completion gates have been implemented, verified, and benchmarked:
 
 ## Verified Benchmark Results
 
-Measured on Apple Silicon (`Darwin arm64`, AppleClang 21.0, Release build):
+Measured on Apple Silicon (`Darwin arm64`, AppleClang, Release build):
 
 ```json
 {

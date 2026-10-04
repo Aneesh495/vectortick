@@ -199,8 +199,11 @@ VT_TEST(cli_integration_tests, replay_cli_execution) {
 }
 
 VT_TEST(cli_integration_tests, demo_execution_status) {
+    std::string seg_path = unique_test_path("demo_test", ".vts");
     int code = 0;
-    std::string out = exec_cmd(find_bin("vectortick_demo"), code);
+    std::string out = exec_cmd(find_bin("vectortick_demo") + " " + seg_path, code);
+    std::error_code ec;
+    std::filesystem::remove(seg_path, ec);
     VT_ASSERT_EQ(code, 0);
     VT_ASSERT(out.find("Demo Completed Successfully!") != std::string::npos);
 }

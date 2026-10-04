@@ -19,12 +19,19 @@
 
 using namespace vectortick;
 
-int main() {
+int main(int argc, char* argv[]) {
     std::cout << "========================================================\n";
     std::cout << "       VectorTick Columnar Analytics Engine Demo         \n";
     std::cout << "========================================================\n\n";
 
     std::string demo_segment = "demo_market_data.vts";
+    if (argc > 1 && argv[1] != nullptr && argv[1][0] != '\0') {
+        demo_segment = argv[1];
+    } else if (const char* env_seg = std::getenv("VECTORTICK_DEMO_SEGMENT")) {
+        if (env_seg[0] != '\0') {
+            demo_segment = env_seg;
+        }
+    }
     std::error_code ec;
     std::filesystem::remove(demo_segment, ec);
 

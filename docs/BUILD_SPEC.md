@@ -21,7 +21,7 @@ This is a source inventory, not a claim that every component works end to end.
 
 ## Build check
 
-On macOS arm64 with AppleClang 21, CMake configuration succeeds and the build
+On macOS arm64 with AppleClang, CMake configuration succeeds and the build
 fails while compiling the JIT sources. Calls in
 `include/vectortick/jit/x86_assembler.hpp` pass `X86Reg` values to
 `modrm(u8, u8, u8)`, which AppleClang rejects. The tests and benchmark cannot
