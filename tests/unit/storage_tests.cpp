@@ -135,11 +135,14 @@ VT_TEST(storage_tests, corruption_detection) {
     // Read file bytes into memory
     FILE* fp = fopen(orig_path.c_str(), "rb");
     VT_ASSERT(fp != nullptr);
-    fseek(fp, 0, SEEK_END);
-    usize sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
+    VT_ASSERT_EQ(fseek(fp, 0, SEEK_END), 0);
+    long sz_long = ftell(fp);
+    VT_ASSERT(sz_long > 0);
+    usize sz = static_cast<usize>(sz_long);
+    VT_ASSERT_EQ(fseek(fp, 0, SEEK_SET), 0);
     std::vector<byte> buf(sz);
-    fread(buf.data(), 1, sz, fp);
+    size_t nread = fread(buf.data(), 1, sz, fp);
+    VT_ASSERT_EQ(nread, sz);
     fclose(fp);
     
     // 1. Corrupt magic
@@ -150,7 +153,9 @@ VT_TEST(storage_tests, corruption_detection) {
         bad_magic[2] = 'D';
         bad_magic[3] = '!';
         FILE* out = fopen(test_path.c_str(), "wb");
-        fwrite(bad_magic.data(), 1, bad_magic.size(), out);
+        VT_ASSERT(out != nullptr);
+        size_t nw = fwrite(bad_magic.data(), 1, bad_magic.size(), out);
+        VT_ASSERT_EQ(nw, bad_magic.size());
         fclose(out);
         
         SegmentReader r;
@@ -171,7 +176,9 @@ VT_TEST(storage_tests, corruption_detection) {
         hdr->header_crc = Crc32C::compute(bad_schema.data(), vts1::SegmentHeader::Size);
         
         FILE* out = fopen(test_path.c_str(), "wb");
-        fwrite(bad_schema.data(), 1, bad_schema.size(), out);
+        VT_ASSERT(out != nullptr);
+        size_t nw = fwrite(bad_schema.data(), 1, bad_schema.size(), out);
+        VT_ASSERT_EQ(nw, bad_schema.size());
         fclose(out);
         
         SegmentReader r;
@@ -190,7 +197,9 @@ VT_TEST(storage_tests, corruption_detection) {
         bad_col[desc[0].offset] ^= 0xFF;
         
         FILE* out = fopen(test_path.c_str(), "wb");
-        fwrite(bad_col.data(), 1, bad_col.size(), out);
+        VT_ASSERT(out != nullptr);
+        size_t nw = fwrite(bad_col.data(), 1, bad_col.size(), out);
+        VT_ASSERT_EQ(nw, bad_col.size());
         fclose(out);
         
         SegmentReader r;
