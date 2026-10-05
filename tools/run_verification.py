@@ -13,7 +13,12 @@ def semhash(d): return hashlib.sha256(json.dumps(d,sort_keys=True,separators=(',
 def main():
  p=argparse.ArgumentParser();p.add_argument('--build',default='build-final');p.add_argument('--output',default='results/verified/local');p.add_argument('--build-type',default='Release',choices=['Release','Debug']);p.add_argument('--compiler',default=os.environ.get('CXX','c++'));p.add_argument('--sanitizers',action='store_true');p.add_argument('--tsan',action='store_true');p.add_argument('--require-arch',default='aarch64' if platform.machine() in ('arm64','aarch64') else 'x86_64');p.add_argument('--job-name',default='local-aarch64-release');a=p.parse_args()
  out=(ROOT/a.output).resolve();out.mkdir(parents=True,exist_ok=True);build=(ROOT/a.build).resolve();revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
- job={'schema':2,'revision':revision,'job_name':a.job_name,'platform':platform.platform(),'machine':platform.machine(),'build_type':a.build_type,'compiler':a.compiler,'sanitizers':a.sanitizers,'tsan':a.tsan,'status':'RUNNING','source_manifest':source_manifest(),'sanitizer_options':{k:os.environ.get(k,'') for k in ('ASAN_OPTIONS','UBSAN_OPTIONS','TSAN_OPTIONS')},'commands':[]}
+ cpu_model=platform.processor()
+ if platform.system()=='Darwin':
+  cpu_model=subprocess.check_output(['sysctl','-n','machdep.cpu.brand_string'],text=True).strip()
+ elif pathlib.Path('/proc/cpuinfo').exists():
+  cpu_model=next((line.split(':',1)[1].strip() for line in pathlib.Path('/proc/cpuinfo').read_text().splitlines() if line.startswith(('model name','Hardware'))),platform.machine())
+ job={'schema':2,'revision':revision,'job_name':a.job_name,'platform':platform.platform(),'machine':platform.machine(),'cpu_model':cpu_model,'logical_cpus':os.cpu_count(),'build_type':a.build_type,'compiler':a.compiler,'sanitizers':a.sanitizers,'tsan':a.tsan,'status':'RUNNING','source_manifest':source_manifest(),'sanitizer_options':{k:os.environ.get(k,'') for k in ('ASAN_OPTIONS','UBSAN_OPTIONS','TSAN_OPTIONS')},'commands':[]}
  def run(name,args,expected=0,cwd=ROOT):
   log=out/(name+'.log');start=time.monotonic_ns()
   with log.open('w') as f:

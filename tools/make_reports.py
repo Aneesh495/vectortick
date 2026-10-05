@@ -26,7 +26,7 @@ def validate_job(files,manifest,revision):
   flags=c['command'];require('-march=native' not in flags,'Nonportable compiler baseline')
   if job['sanitizers']:require('-fsanitize=address' in flags and '-fsanitize=undefined' in flags,'Missing sanitizer flags')
   if job['tsan']:require('-fsanitize=thread' in flags,'Missing TSan flags')
- cases_text=files[commands['test-cases']['log']].decode();require(len(re.findall(r'  [a-z_]+::',cases_text))>=80,'Missing actual test discovery')
+ cases_text=files[commands['test-cases']['log']].decode();require(len(re.findall(r'  [a-z_0-9]+::',cases_text))>=80,'Missing actual test discovery')
  headers=data('headers.json');require(headers['headers_checked']>=50 and headers['failures']==0 and all(r['exit_code']==0 for r in headers['results']),'Header checks failed')
  if job['tsan']:
   text=files[commands['crc-tsan']['log']].decode();require(re.search(r'0 failed, [1-9][0-9]* total run',text),'TSan skipped CRC tests');require('WARNING: ThreadSanitizer' not in text,'TSan race');return job
