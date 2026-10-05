@@ -13,7 +13,7 @@ def semhash(d): return hashlib.sha256(json.dumps(d,sort_keys=True,separators=(',
 def main():
  p=argparse.ArgumentParser();p.add_argument('--build',default='build-final');p.add_argument('--output',default='results/verified/local');p.add_argument('--build-type',default='Release',choices=['Release','Debug']);p.add_argument('--compiler',default=os.environ.get('CXX','c++'));p.add_argument('--sanitizers',action='store_true');p.add_argument('--tsan',action='store_true');p.add_argument('--require-arch',default='aarch64' if platform.machine() in ('arm64','aarch64') else 'x86_64');p.add_argument('--job-name',default='local-aarch64-release');a=p.parse_args()
  out=(ROOT/a.output).resolve();out.mkdir(parents=True,exist_ok=True);build=(ROOT/a.build).resolve();revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
- job={'schema':2,'revision':revision,'job_name':a.job_name,'platform':platform.platform(),'machine':platform.machine(),'build_type':a.build_type,'compiler':a.compiler,'sanitizers':a.sanitizers,'tsan':a.tsan,'status':'RUNNING','source_manifest':source_manifest(),'commands':[]}
+ job={'schema':2,'revision':revision,'job_name':a.job_name,'platform':platform.platform(),'machine':platform.machine(),'build_type':a.build_type,'compiler':a.compiler,'sanitizers':a.sanitizers,'tsan':a.tsan,'status':'RUNNING','source_manifest':source_manifest(),'sanitizer_options':{k:os.environ.get(k,'') for k in ('ASAN_OPTIONS','UBSAN_OPTIONS','TSAN_OPTIONS')},'commands':[]}
  def run(name,args,expected=0,cwd=ROOT):
   log=out/(name+'.log');start=time.monotonic_ns()
   with log.open('w') as f:
@@ -26,6 +26,9 @@ def main():
   if a.sanitizers:configure+=['-DVT_ENABLE_ASAN=ON','-DVT_ENABLE_UBSAN=ON']
   if a.tsan:configure+=['-DVT_ENABLE_TSAN=ON']
   run('configure',configure);run('build',['cmake','--build',build,'--parallel','4'])
+  (out/'compile_commands.json').write_bytes((build/'compile_commands.json').read_bytes())
+  (out/'CMakeCache.txt').write_bytes((build/'CMakeCache.txt').read_bytes())
+  run('compiler-version',[a.compiler,'--version'])
   run('test-cases',[build/'bin/vectortick_tests','--list'],cwd=build)
   run('headers',[sys.executable,ROOT/'tools/check_headers.py','--compiler',a.compiler,'--json',out/'headers.json'])
   if a.tsan:
@@ -39,6 +42,7 @@ def main():
    run('empty-filter',[build/'bin/vectortick_tests','--suite=does_not_exist'],expected='nonzero',cwd=build)
    run('native-campaign',[build/'bin/vectortick_native_campaign','--require-arch',a.require_arch,'--json',out/'native-full.json'],cwd=build)
    run('sql-campaign',[build/'bin/vectortick_sql_campaign','--json',out/'sql-full.json'],cwd=build)
+   run('demo-default',[build/'bin/vectortick_demo'],cwd=build)
    run('demo',[build/'bin/vectortick_demo',out/'demo.vts'],cwd=build)
    workload_rows=2000 if a.sanitizers else 50000
    run('generate-pcap',[build/'bin/vectortick_verification_bench','--pcap',out/'input.pcap',out/'workload.json',str(workload_rows)])

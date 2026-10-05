@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <random>
 using namespace vectortick;
 namespace {
 std::vector<u8> read(const std::string &p) {
@@ -338,4 +339,37 @@ VT_TEST(repair_regression_tests, native_lifetime_moves_eviction_and_failed_compi
         VT_ASSERT(r.value().native_invocations > 0);
         VT_ASSERT(cache.size() <= 128);
     }
+}
+
+VT_TEST(repair_regression_tests, incompressible_segment_expansion_and_manifest_limits) {
+    std::mt19937_64 random(49520261008ULL);
+    std::vector<CanonicalEvent> events(10000);
+    for (auto &e : events) {
+        e.exchange_ts_ns = random() % Limits::MaxTimestamp;
+        e.receive_ts_ns = random() % Limits::MaxTimestamp;
+        e.sequence = random();
+        e.instrument_id = random() % Limits::MaxInstruments;
+        e.event_type = static_cast<EventType>(random() % 5);
+        e.side = static_cast<Side>(random() % 2);
+        e.flags = static_cast<u16>(random());
+        e.price_ticks = static_cast<i64>(random() % Limits::MaxPrice);
+        e.quantity = random() % Limits::MaxQuantity;
+        e.venue_id = random() % Limits::MaxVenues;
+        e.source_id = random() % Limits::MaxSources;
+        e.trade_or_order_id = random();
+    }
+    VT_ASSERT(segment("repair-incompressible.vts", events).ok());
+    SegmentReader reader;
+    VT_ASSERT(reader.open("repair-incompressible.vts").ok());
+    std::vector<CanonicalEvent> decoded;
+    VT_ASSERT(reader.read_all_events(decoded).ok());
+    VT_ASSERT_EQ(decoded.size(), events.size());
+    for (usize i = 0; i < events.size(); ++i)
+        VT_ASSERT_BYTES_EQ(&events[i], &decoded[i], sizeof(CanonicalEvent));
+    std::ofstream file("repair-huge.manifest", std::ios::binary);
+    file.seekp(64 * 1024 * 1024);
+    file.put('x');
+    file.close();
+    Manifest manifest;
+    VT_ASSERT(!Manifest::load("repair-huge.manifest", manifest).ok());
 }
