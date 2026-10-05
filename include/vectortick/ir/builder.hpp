@@ -89,6 +89,8 @@ public:
     [[nodiscard]] Function* function() noexcept { return function_; }
     [[nodiscard]] const Function* function() const noexcept { return function_; }
     
+    std::unique_ptr<Function> take_function() noexcept { function_ = nullptr; current_block_ = nullptr; return std::move(owned_function_); }
+
 private:
     Type infer_type(const query::Expression* expr) const;
     Opcode get_comparison_opcode(query::TokenType op, Type type) const;

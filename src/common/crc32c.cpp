@@ -6,9 +6,6 @@
 #if defined(__x86_64__) || defined(_M_X64)
 #include <cpuid.h>
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC target("+crc")
-#endif
 #include <arm_acle.h>
 #if defined(__APPLE__)
 #include <sys/sysctl.h>

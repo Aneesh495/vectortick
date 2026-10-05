@@ -124,7 +124,9 @@ void bench_interpreter_and_jit() {
     Timer timer_jit;
     u64 jit_res = 0;
     for (size_t i = 0; i < iterations; ++i) {
-        jit_res = jit_fn(&event);
+        auto native = jit::invoke_native(jit_fn, &event);
+        if (!native.ok()) std::abort();
+        jit_res = native.value();
     }
     double elapsed_jit = timer_jit.elapsed_sec();
     double mops_jit = (iterations / elapsed_jit) / 1e6;

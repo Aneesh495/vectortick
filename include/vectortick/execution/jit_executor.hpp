@@ -9,6 +9,7 @@
 #include "vectortick/execution/query_result.hpp"
 
 #include <vector>
+#include "query_engine.hpp"
 
 namespace vectortick {
 
@@ -23,6 +24,8 @@ public:
     // Execute query against in-memory canonical events
     Result<QueryResult> execute_events(const std::vector<CanonicalEvent>& events,
                                        const query::QueryStmt* query_ast);
+private:
+    NativeCache cache_;
 };
 
 } // namespace vectortick

@@ -20,6 +20,8 @@ public:
         : opcode_(op), operands_(std::move(operands)), result_(result), result_type_(result_type)
         , parent_(nullptr) {}
     
+    virtual ~Instruction() = default;
+
     // Opcode
     [[nodiscard]] Opcode opcode() const noexcept { return opcode_; }
     
@@ -68,6 +70,16 @@ private:
     Type result_type_;
     BasicBlock* parent_;
     usize id_ = 0;
+};
+
+// Phi inputs are selected on the incoming CFG edge.
+class PhiOp : public Instruction {
+public:
+    PhiOp(std::vector<BasicBlock*> blocks, std::vector<ValueId> values, ValueId result, Type type)
+        : Instruction(Opcode::Phi, std::move(values), result, type), blocks_(std::move(blocks)) {}
+    const std::vector<BasicBlock*>& incoming_blocks() const noexcept { return blocks_; }
+private:
+    std::vector<BasicBlock*> blocks_;
 };
 
 // Specific instruction types for convenience

@@ -124,7 +124,7 @@ VT_TEST(types_tests, crc32c_concurrent_first_use) {
     constexpr int kThreads = 16;
     constexpr int kIters = 500;
     std::vector<std::thread> threads;
-    std::vector<bool> thread_ok(kThreads, false);
+    std::vector<u8> thread_ok(kThreads, 0);
 
     for (int t = 0; t < kThreads; ++t) {
         threads.emplace_back([t, &thread_ok]() {

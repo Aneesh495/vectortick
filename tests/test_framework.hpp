@@ -66,7 +66,7 @@ public:
         std::cout << "\nTest Summary: " << pass_count << " passed, " << fail_count << " failed, "
                   << run_count << " total run.\n";
         
-        return fail_count == 0 ? 0 : 1;
+        return fail_count == 0 && run_count > 0 ? 0 : 1;
     }
     
     static bool current_failed;

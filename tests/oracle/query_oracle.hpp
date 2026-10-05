@@ -80,136 +80,75 @@ public:
 
     static vts1::ColumnType get_column_type(std::string_view col) {
         if (ieq(col, "price_ticks") || ieq(col, "price")) return vts1::ColumnType::I64;
-        if (ieq(col, "instrument_id") || ieq(col, "quantity")) return vts1::ColumnType::U32;
+        if (ieq(col, "instrument_id") || ieq(col, "instrument") || ieq(col,"symbol") || ieq(col, "quantity") || ieq(col,"qty")) return vts1::ColumnType::U32;
         if (ieq(col, "event_type") || ieq(col, "side")) return vts1::ColumnType::U8;
-        if (ieq(col, "flags") || ieq(col, "venue_id") || ieq(col, "source_id")) return vts1::ColumnType::U16;
+        if (ieq(col, "flags") || ieq(col, "venue_id") || ieq(col,"venue") || ieq(col, "source_id") || ieq(col,"source")) return vts1::ColumnType::U16;
         return vts1::ColumnType::U64;
     }
 
     static Result<OracleValue> eval_expr(const query::Expression* expr, const CanonicalEvent& ev) {
+        __extension__ typedef __int128 Wide;
+        __extension__ typedef unsigned __int128 UWide;
+        auto error = [](){return make_error<OracleValue>(StatusCode::InternalError,"Oracle arithmetic error");};
         if (!expr) return OracleValue::make_unsigned(1);
-
-        switch (expr->type) {
-            case query::ExprType::Literal: {
-                const auto* lit = static_cast<const query::LiteralExpr*>(expr);
-                return OracleValue::make_unsigned(lit->value);
-            }
-            case query::ExprType::ColumnRef: {
-                const auto* cr = static_cast<const query::ColumnRefExpr*>(expr);
-                return get_column_value(ev, cr->name);
-            }
-            case query::ExprType::UnaryOp: {
-                const auto* un = static_cast<const query::UnaryOpExpr*>(expr);
-                auto val_res = eval_expr(un->operand.get(), ev);
-                if (!val_res.ok()) return val_res;
-                const auto& val = val_res.value();
-                if (un->op == query::TokenType::Bang) {
-                    return OracleValue::make_unsigned(val.is_true() ? 0 : 1);
-                } else if (un->op == query::TokenType::Minus) {
-                    int64_t s = val.is_signed ? val.i_val : static_cast<int64_t>(val.u_val);
-                    if (s == std::numeric_limits<int64_t>::min()) {
-                        return make_error<OracleValue>(StatusCode::InternalError, "Negation overflow");
-                    }
-                    return OracleValue::make_signed(-s);
-                }
-                return val_res;
-            }
-            case query::ExprType::BinaryOp: {
-                const auto* bin = static_cast<const query::BinaryOpExpr*>(expr);
-                auto l_res = eval_expr(bin->left.get(), ev);
-                if (!l_res.ok()) return l_res;
-                auto r_res = eval_expr(bin->right.get(), ev);
-                if (!r_res.ok()) return r_res;
-
-                const auto& l = l_res.value();
-                const auto& r = r_res.value();
-
-                if (bin->op == query::TokenType::And) {
-                    return OracleValue::make_unsigned((l.is_true() && r.is_true()) ? 1 : 0);
-                }
-                if (bin->op == query::TokenType::Or) {
-                    return OracleValue::make_unsigned((l.is_true() || r.is_true()) ? 1 : 0);
-                }
-
-                bool is_signed_op = (l.is_signed || r.is_signed);
-                if (is_signed_op) {
-                    int64_t lv = l.is_signed ? l.i_val : static_cast<int64_t>(l.u_val);
-                    int64_t rv = r.is_signed ? r.i_val : static_cast<int64_t>(r.u_val);
-
-                    switch (bin->op) {
-                        case query::TokenType::Equal: return OracleValue::make_unsigned(lv == rv ? 1 : 0);
-                        case query::TokenType::NotEqual: return OracleValue::make_unsigned(lv != rv ? 1 : 0);
-                        case query::TokenType::Less: return OracleValue::make_unsigned(lv < rv ? 1 : 0);
-                        case query::TokenType::LessEqual: return OracleValue::make_unsigned(lv <= rv ? 1 : 0);
-                        case query::TokenType::Greater: return OracleValue::make_unsigned(lv > rv ? 1 : 0);
-                        case query::TokenType::GreaterEqual: return OracleValue::make_unsigned(lv >= rv ? 1 : 0);
-                        case query::TokenType::Plus:
-                            if ((rv > 0 && lv > std::numeric_limits<int64_t>::max() - rv) ||
-                                (rv < 0 && lv < std::numeric_limits<int64_t>::min() - rv)) {
-                                return make_error<OracleValue>(StatusCode::InternalError, "Addition overflow");
-                            }
-                            return OracleValue::make_signed(lv + rv);
-                        case query::TokenType::Minus:
-                            if ((rv < 0 && lv > std::numeric_limits<int64_t>::max() + rv) ||
-                                (rv > 0 && lv < std::numeric_limits<int64_t>::min() + rv)) {
-                                return make_error<OracleValue>(StatusCode::InternalError, "Subtraction overflow");
-                            }
-                            return OracleValue::make_signed(lv - rv);
-                        case query::TokenType::Star:
-                            if (lv != 0 && rv != 0) {
-                                if (lv > 0 && (rv > std::numeric_limits<int64_t>::max() / lv || rv < std::numeric_limits<int64_t>::min() / lv))
-                                    return make_error<OracleValue>(StatusCode::InternalError, "Multiplication overflow");
-                                if (lv < 0 && (rv > 0 ? lv < std::numeric_limits<int64_t>::min() / rv : lv < std::numeric_limits<int64_t>::max() / rv))
-                                    return make_error<OracleValue>(StatusCode::InternalError, "Multiplication overflow");
-                            }
-                            return OracleValue::make_signed(lv * rv);
-                        case query::TokenType::Slash:
-                            if (rv == 0) return make_error<OracleValue>(StatusCode::InternalError, "Division by zero");
-                            if (lv == std::numeric_limits<int64_t>::min() && rv == -1)
-                                return make_error<OracleValue>(StatusCode::InternalError, "Division overflow");
-                            return OracleValue::make_signed(lv / rv);
-                        case query::TokenType::Percent:
-                            if (rv == 0) return make_error<OracleValue>(StatusCode::InternalError, "Modulo by zero");
-                            return OracleValue::make_signed(lv % rv);
-                        default:
-                            return make_error<OracleValue>(StatusCode::NotImplemented, "Unsupported binary operator");
-                    }
-                } else {
-                    uint64_t lv = l.u_val;
-                    uint64_t rv = r.u_val;
-                    switch (bin->op) {
-                        case query::TokenType::Equal: return OracleValue::make_unsigned(lv == rv ? 1 : 0);
-                        case query::TokenType::NotEqual: return OracleValue::make_unsigned(lv != rv ? 1 : 0);
-                        case query::TokenType::Less: return OracleValue::make_unsigned(lv < rv ? 1 : 0);
-                        case query::TokenType::LessEqual: return OracleValue::make_unsigned(lv <= rv ? 1 : 0);
-                        case query::TokenType::Greater: return OracleValue::make_unsigned(lv > rv ? 1 : 0);
-                        case query::TokenType::GreaterEqual: return OracleValue::make_unsigned(lv >= rv ? 1 : 0);
-                        case query::TokenType::Plus:
-                            if (lv > std::numeric_limits<uint64_t>::max() - rv)
-                                return make_error<OracleValue>(StatusCode::InternalError, "Unsigned add overflow");
-                            return OracleValue::make_unsigned(lv + rv);
-                        case query::TokenType::Minus:
-                            if (lv < rv)
-                                return make_error<OracleValue>(StatusCode::InternalError, "Unsigned sub underflow");
-                            return OracleValue::make_unsigned(lv - rv);
-                        case query::TokenType::Star:
-                            if (lv > 0 && rv > std::numeric_limits<uint64_t>::max() / lv)
-                                return make_error<OracleValue>(StatusCode::InternalError, "Unsigned mul overflow");
-                            return OracleValue::make_unsigned(lv * rv);
-                        case query::TokenType::Slash:
-                            if (rv == 0) return make_error<OracleValue>(StatusCode::InternalError, "Division by zero");
-                            return OracleValue::make_unsigned(lv / rv);
-                        case query::TokenType::Percent:
-                            if (rv == 0) return make_error<OracleValue>(StatusCode::InternalError, "Modulo by zero");
-                            return OracleValue::make_unsigned(lv % rv);
-                        default:
-                            return make_error<OracleValue>(StatusCode::NotImplemented, "Unsupported binary operator");
-                    }
-                }
-            }
-            default:
-                return OracleValue::make_unsigned(0);
+        if (expr->type == query::ExprType::Literal) return OracleValue::make_unsigned(static_cast<const query::LiteralExpr*>(expr)->value);
+        if (expr->type == query::ExprType::ColumnRef) return get_column_value(ev,static_cast<const query::ColumnRefExpr*>(expr)->name);
+        if (expr->type == query::ExprType::UnaryOp) {
+            auto un = static_cast<const query::UnaryOpExpr*>(expr);
+            auto val = eval_expr(un->operand.get(),ev); if (!val.ok()) return val;
+            if (un->op == query::TokenType::Bang) return OracleValue::make_unsigned(!val.value().is_true());
+            Wide magnitude = val.value().is_signed ? Wide(val.value().i_val) : Wide(val.value().u_val);
+            Wide out = -magnitude;
+            if (out < INT64_MIN || out > INT64_MAX) return error();
+            return OracleValue::make_signed(static_cast<i64>(out));
         }
+        if (expr->type != query::ExprType::BinaryOp) return make_error<OracleValue>(StatusCode::NotImplemented,"Oracle unsupported expression");
+        auto bin = static_cast<const query::BinaryOpExpr*>(expr);
+        auto left = eval_expr(bin->left.get(),ev); if (!left.ok())return left;
+        if (bin->op == query::TokenType::And && !left.value().is_true()) return OracleValue::make_unsigned(0);
+        if (bin->op == query::TokenType::Or && left.value().is_true()) return OracleValue::make_unsigned(1);
+        auto right = eval_expr(bin->right.get(),ev); if (!right.ok()) return right;
+        auto l = left.value(),r = right.value();
+        Wide x = l.is_signed ? Wide(l.i_val) : Wide(l.u_val), y = r.is_signed ? Wide(r.i_val) : Wide(r.u_val);
+        switch (bin->op) {
+            case query::TokenType::And:return OracleValue::make_unsigned(l.is_true() && r.is_true());
+            case query::TokenType::Or:return OracleValue::make_unsigned(l.is_true() || r.is_true());
+            case query::TokenType::Equal:return OracleValue::make_unsigned(x == y);
+            case query::TokenType::NotEqual:return OracleValue::make_unsigned(x != y);
+            case query::TokenType::Less:return OracleValue::make_unsigned(x < y);
+            case query::TokenType::LessEqual:return OracleValue::make_unsigned(x <= y);
+            case query::TokenType::Greater:return OracleValue::make_unsigned(x > y);
+            case query::TokenType::GreaterEqual:return OracleValue::make_unsigned(x >= y);
+            case query::TokenType::Amp:return OracleValue::make_unsigned(l.u_val & r.u_val);
+            case query::TokenType::Pipe:return OracleValue::make_unsigned(l.u_val | r.u_val);
+            case query::TokenType::Caret:return OracleValue::make_unsigned(l.u_val ^ r.u_val);
+            default:break;
+        }
+        if (l.is_signed || r.is_signed) {
+            if (x > INT64_MAX || y > INT64_MAX) return error();
+            Wide out = 0;
+            switch(bin->op) {
+                case query::TokenType::Plus:out=x+y;break;
+                case query::TokenType::Minus:out=x-y;break;
+                case query::TokenType::Star:out=x*y;break;
+                case query::TokenType::Slash:if(!y)return error();out=x/y;break;
+                case query::TokenType::Percent:if(!y)return error();out=x%y;break;
+                default:return make_error<OracleValue>(StatusCode::NotImplemented,"Oracle operator");
+            }
+            if (out < INT64_MIN || out > INT64_MAX) return error();
+            return OracleValue::make_signed(static_cast<i64>(out));
+        }
+        UWide out = 0;
+        switch(bin->op) {
+            case query::TokenType::Plus:out=UWide(l.u_val)+r.u_val;break;
+            case query::TokenType::Minus:if(l.u_val<r.u_val)return error();out=l.u_val-r.u_val;break;
+            case query::TokenType::Star:out=UWide(l.u_val)*r.u_val;break;
+            case query::TokenType::Slash:if(!r.u_val)return error();out=l.u_val/r.u_val;break;
+            case query::TokenType::Percent:if(!r.u_val)return error();out=l.u_val%r.u_val;break;
+            default:return make_error<OracleValue>(StatusCode::NotImplemented,"Oracle operator");
+        }
+        if(out > UINT64_MAX)return error();
+        return OracleValue::make_unsigned(static_cast<u64>(out));
     }
 
     static Result<QueryResult> evaluate(const std::vector<CanonicalEvent>& events,
@@ -338,11 +277,17 @@ public:
                     if (!v_res.ok()) return make_error<QueryResult>(v_res.status().code(), v_res.status().message());
                     const auto& v = v_res.value();
                     if (acc.is_signed) {
-                        acc.sum_i64 += v.i_val;
+                        if (ieq(acc.fn,"SUM") || ieq(acc.fn,"AVG")) {
+                            if (__builtin_add_overflow(acc.sum_i64,v.i_val,&acc.sum_i64))
+                                return make_error<QueryResult>(StatusCode::InternalError,"Oracle sum overflow");
+                        }
                         if (v.i_val < acc.min_i64) acc.min_i64 = v.i_val;
                         if (v.i_val > acc.max_i64) acc.max_i64 = v.i_val;
                     } else {
-                        acc.sum_u64 += v.u_val;
+                        if (ieq(acc.fn,"SUM") || ieq(acc.fn,"AVG")) {
+                            if (__builtin_add_overflow(acc.sum_u64,v.u_val,&acc.sum_u64))
+                                return make_error<QueryResult>(StatusCode::InternalError,"Oracle sum overflow");
+                        }
                         if (v.u_val < acc.min_u64) acc.min_u64 = v.u_val;
                         if (v.u_val > acc.max_u64) acc.max_u64 = v.u_val;
                     }
@@ -431,11 +376,17 @@ public:
                     if (!v_res.ok()) return make_error<QueryResult>(v_res.status().code(), v_res.status().message());
                     const auto& v = v_res.value();
                     if (ai.is_signed) {
-                        ai.sum_i64 += v.i_val;
+                        if (ieq(ai.fn,"SUM") || ieq(ai.fn,"AVG")) {
+                            if (__builtin_add_overflow(ai.sum_i64,v.i_val,&ai.sum_i64))
+                                return make_error<QueryResult>(StatusCode::InternalError,"Oracle sum overflow");
+                        }
                         if (v.i_val < ai.min_i64) ai.min_i64 = v.i_val;
                         if (v.i_val > ai.max_i64) ai.max_i64 = v.i_val;
                     } else {
-                        ai.sum_u64 += v.u_val;
+                        if (ieq(ai.fn,"SUM") || ieq(ai.fn,"AVG")) {
+                            if (__builtin_add_overflow(ai.sum_u64,v.u_val,&ai.sum_u64))
+                                return make_error<QueryResult>(StatusCode::InternalError,"Oracle sum overflow");
+                        }
                         if (v.u_val < ai.min_u64) ai.min_u64 = v.u_val;
                         if (v.u_val > ai.max_u64) ai.max_u64 = v.u_val;
                     }
@@ -549,20 +500,27 @@ public:
 
 private:
     static vts1::ColumnType infer_type(const query::Expression* expr) {
-        if (!expr) return vts1::ColumnType::U64;
-        if (expr->type == query::ExprType::ColumnRef) {
-            return get_column_type(static_cast<const query::ColumnRefExpr*>(expr)->name);
+        using query::ExprType; using query::TokenType; using CT = vts1::ColumnType;
+        if (!expr) return CT::U64;
+        if (expr->type == ExprType::ColumnRef) return get_column_type(static_cast<const query::ColumnRefExpr*>(expr)->name);
+        if (expr->type == ExprType::FunctionCall) {
+            auto fc = static_cast<const query::FunctionCallExpr*>(expr);
+            if (ieq(fc->name,"COUNT")) return CT::U64;
+            CT arg = infer_type(fc->args.empty()?nullptr:fc->args[0].get());
+            if (ieq(fc->name,"SUM") || ieq(fc->name,"AVG")) return arg == CT::I64 ? CT::I64 : CT::U64;
+            return arg;
         }
-        if (expr->type == query::ExprType::FunctionCall) {
-            const auto* fc = static_cast<const query::FunctionCallExpr*>(expr);
-            if (ieq(fc->name, "COUNT")) return vts1::ColumnType::U64;
-            if (!fc->args.empty()) {
-                return infer_type(fc->args[0].get());
-            }
-            return vts1::ColumnType::U64;
+        if (expr->type == ExprType::UnaryOp) return static_cast<const query::UnaryOpExpr*>(expr)->op == TokenType::Bang ? CT::Bool : CT::I64;
+        if (expr->type == ExprType::BinaryOp) {
+            auto b = static_cast<const query::BinaryOpExpr*>(expr);
+            if (b->op == TokenType::And || b->op == TokenType::Or || b->op == TokenType::Equal || b->op == TokenType::NotEqual ||
+                b->op == TokenType::Less || b->op == TokenType::LessEqual || b->op == TokenType::Greater || b->op == TokenType::GreaterEqual) return CT::Bool;
+            if (b->op == TokenType::Amp || b->op == TokenType::Pipe || b->op == TokenType::Caret) return CT::U64;
+            return infer_type(b->left.get()) == CT::I64 || infer_type(b->right.get()) == CT::I64 ? CT::I64 : CT::U64;
         }
-        return vts1::ColumnType::U64;
+        return CT::U64;
     }
+
 };
 
 } // namespace test
