@@ -1,4 +1,5 @@
 #pragma once
+#include "bitpack.hpp"
 
 #include "../common/types.hpp"
 #include "../common/status.hpp"
@@ -47,6 +48,7 @@ public:
         
         for (usize i = 0; i < MaxSize && i < input_size; ++i) {
             byte b = input[i];
+            if (i == 9 && (b & 0xFE)) return 0;
             ++consumed;
             
             value |= static_cast<u64>(b & 0x7F) << shift;

@@ -106,7 +106,7 @@ public:
         std::vector<u64> removed_segments;
     };
 
-    static Status read_all(const std::string& path, std::vector<RecoveredTx>& recovered_txs);
+    static Status read_all(const std::string& path, std::vector<RecoveredTx>& recovered_txs, usize* valid_end = nullptr);
 
 private:
     Status write_record(u64 tx_id, JournalOpType op, const void* payload, u32 payload_size);

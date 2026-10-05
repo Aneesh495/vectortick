@@ -60,6 +60,15 @@ enum class ColumnType : u8 {
     Bool = 8
 };
 
+[[nodiscard]] inline usize column_type_size(ColumnType type) noexcept {
+    switch (type) {
+        case ColumnType::U64: case ColumnType::I64:return 8;
+        case ColumnType::U32: case ColumnType::I32:return 4;
+        case ColumnType::U16: case ColumnType::I16:return 2;
+        default:return 1;
+    }
+}
+
 // Encoding types
 enum class EncodingType : u8 {
     Raw = 0,            // Uncompressed fixed-width

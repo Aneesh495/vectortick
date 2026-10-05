@@ -1,82 +1,86 @@
 name: CI
-
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-
+    branches: [main]
+permissions:
+  contents: read
 jobs:
   build_and_test:
-    name: ${{ matrix.os }} - ${{ matrix.build_type }} - ${{ matrix.compiler }}
+    name: ${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        build_type: [Release, Debug]
-        compiler: [clang, gcc]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
         exclude:
-          - os: macos-latest
+          - os: macos-15
             compiler: gcc
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select compiler
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libpcap-dev
-          if [ "${{ matrix.compiler }}" = "clang" ]; then
-            sudo apt-get install -y clang llvm
-            echo "CC=clang" >> $GITHUB_ENV
-            echo "CXX=clang++" >> $GITHUB_ENV
+          if [ '${{ matrix.compiler }}' = gcc ]; then
+            echo 'CXX=g++' >> "$GITHUB_ENV"
           else
-            sudo apt-get install -y g++-13 gcc-13
-            echo "CC=gcc-13" >> $GITHUB_ENV
-            echo "CXX=g++-13" >> $GITHUB_ENV
+            echo 'CXX=clang++' >> "$GITHUB_ENV"
           fi
-
-      - name: Configure CMake
+      - name: Execute verification gates
+        shell: bash
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run Tests
-        run: ctest --test-dir build --output-on-failure --parallel 4
-
-      - name: Run Demo
-        run: ./build/bin/vectortick_demo
-
+          python3 tools/run_verification.py --build build-ci --build-type '${{ matrix.build_type }}' --compiler "$CXX" --output results/verified/job --job-name '${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}
+          path: |
+            results/verified/job/
+            build-ci/Testing/Temporary/
+            build-ci/compile_commands.json
+          if-no-files-found: error
   sanitizers:
-    name: Linux Sanitizers (ASan + UBSan)
-    runs-on: ubuntu-latest
+    name: ubuntu-24.04-clang-sanitizers
+    runs-on: ubuntu-24.04
+    env:
+      ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang llvm libpcap-dev
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-
-      - name: Configure with Sanitizers
-        run: |
-          cmake -B build-san -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DVT_ENABLE_ASAN=ON \
-            -DVT_ENABLE_UBSAN=ON
-
-      - name: Build
-        run: cmake --build build-san --parallel
-
-      - name: Run Sanitized Tests
-        run: ctest --test-dir build-san --output-on-failure
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Execute ASan and UBSan gates
+        run: python3 tools/run_verification.py --build build-san-ci --build-type Debug --compiler clang++ --sanitizers --output results/verified/job --job-name ubuntu-24.04-clang-sanitizers
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-ubuntu-24.04-clang-sanitizers
+          path: |
+            results/verified/job/
+            build-san-ci/Testing/Temporary/
+            build-san-ci/compile_commands.json
+          if-no-files-found: error
+  crc_tsan:
+    name: ubuntu-24.04-clang-tsan
+    runs-on: ubuntu-24.04
+    env:
+      TSAN_OPTIONS: halt_on_error=1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure compatible TSan address space
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Execute concurrent CRC under TSan
+        run: python3 tools/run_verification.py --build build-tsan-ci --build-type Debug --compiler clang++ --tsan --output results/verified/job --job-name ubuntu-24.04-clang-tsan
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-ubuntu-24.04-clang-tsan
+          path: results/verified/job/
+          if-no-files-found: error

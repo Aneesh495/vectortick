@@ -1,4 +1,6 @@
 #pragma once
+#include <vector>
+#include "../common/endian.hpp"
 
 #include "../common/types.hpp"
 #include "../common/status.hpp"

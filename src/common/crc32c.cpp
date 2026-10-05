@@ -1,5 +1,6 @@
 #include "vectortick/common/crc32c.hpp"
 
+#include <array>
 #include <atomic>
 #include <cstring>
 
@@ -10,8 +11,8 @@
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
 #elif defined(__linux__)
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
+#include <sys/auxv.h>
 #endif
 #endif
 
@@ -81,9 +82,13 @@ bool Crc32C::is_hw_supported() noexcept {
 }
 
 Status Crc32C::set_dispatch_override(CrcDispatchPolicy policy) noexcept {
+    if (policy != CrcDispatchPolicy::Auto && policy != CrcDispatchPolicy::ForceHardware &&
+        policy != CrcDispatchPolicy::ForceSoftware)
+        return Status(StatusCode::InvalidArgument, "Invalid CRC dispatch policy");
     if (policy == CrcDispatchPolicy::ForceHardware) {
         if (!is_hw_supported()) {
-            return Status(StatusCode::NotImplemented, "Hardware CRC32C acceleration not supported on this host");
+            return Status(StatusCode::NotImplemented,
+                          "Hardware CRC32C acceleration not supported on this host");
         }
     }
     s_dispatch_policy.store(static_cast<u8>(policy), std::memory_order_relaxed);
@@ -98,13 +103,13 @@ void Crc32C::reset_dispatch_override() noexcept {
     s_dispatch_policy.store(static_cast<u8>(CrcDispatchPolicy::Auto), std::memory_order_relaxed);
 }
 
-u32 Crc32C::compute_sw(u32 init_crc, const byte* data, usize length) noexcept {
+u32 Crc32C::compute_sw(u32 init_crc, const byte *data, usize length) noexcept {
     if (data == nullptr || length == 0) {
         return init_crc;
     }
     u32 crc = init_crc ^ 0xFFFFFFFF;
-    const u8* ptr = reinterpret_cast<const u8*>(data);
-    const u8* end = ptr + length;
+    const u8 *ptr = reinterpret_cast<const u8 *>(data);
+    const u8 *end = ptr + length;
     while (ptr < end) {
         crc = kCrc32cTable.table[(crc ^ *ptr) & 0xFF] ^ (crc >> 8);
         ++ptr;
@@ -112,7 +117,7 @@ u32 Crc32C::compute_sw(u32 init_crc, const byte* data, usize length) noexcept {
     return crc ^ 0xFFFFFFFF;
 }
 
-u32 Crc32C::compute_sw(const byte* data, usize length) noexcept {
+u32 Crc32C::compute_sw(const byte *data, usize length) noexcept {
     return compute_sw(0, data, length);
 }
 
@@ -120,10 +125,10 @@ u32 Crc32C::compute_sw(const byte* data, usize length) noexcept {
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((target("+crc")))
 #endif
-u32 Crc32C::compute_arm(u32 init_crc, const byte* data, usize length) noexcept {
+u32 Crc32C::compute_arm(u32 init_crc, const byte *data, usize length) noexcept {
     u32 crc = init_crc;
-    const u8* ptr = reinterpret_cast<const u8*>(data);
-    
+    const u8 *ptr = reinterpret_cast<const u8 *>(data);
+
     while (length >= 8) {
         u64 val;
         std::memcpy(&val, ptr, 8);
@@ -131,7 +136,7 @@ u32 Crc32C::compute_arm(u32 init_crc, const byte* data, usize length) noexcept {
         ptr += 8;
         length -= 8;
     }
-    
+
     if (length >= 4) {
         u32 val;
         std::memcpy(&val, ptr, 4);
@@ -139,7 +144,7 @@ u32 Crc32C::compute_arm(u32 init_crc, const byte* data, usize length) noexcept {
         ptr += 4;
         length -= 4;
     }
-    
+
     if (length >= 2) {
         u16 val;
         std::memcpy(&val, ptr, 2);
@@ -147,20 +152,18 @@ u32 Crc32C::compute_arm(u32 init_crc, const byte* data, usize length) noexcept {
         ptr += 2;
         length -= 2;
     }
-    
+
     if (length >= 1) {
         crc = __crc32cb(crc, *ptr);
     }
-    
+
     return crc;
 }
 #else
-u32 Crc32C::compute_arm(u32 init_crc, const byte*, usize) noexcept {
-    return init_crc;
-}
+u32 Crc32C::compute_arm(u32 init_crc, const byte *, usize) noexcept { return init_crc; }
 #endif
 
-u32 Crc32C::compute_hw(u32 init_crc, const byte* data, usize length) noexcept {
+u32 Crc32C::compute_hw(u32 init_crc, const byte *data, usize length) noexcept {
     if (data == nullptr || length == 0) {
         return init_crc;
     }
@@ -180,16 +183,17 @@ u32 Crc32C::compute_hw(u32 init_crc, const byte* data, usize length) noexcept {
     return compute_sw(init_crc, data, length);
 }
 
-u32 Crc32C::compute_hw(const byte* data, usize length) noexcept {
+u32 Crc32C::compute_hw(const byte *data, usize length) noexcept {
     return compute_hw(0, data, length);
 }
 
-u32 Crc32C::compute(u32 init_crc, const byte* data, usize length) noexcept {
+u32 Crc32C::compute(u32 init_crc, const byte *data, usize length) noexcept {
     if (data == nullptr || length == 0) {
         return init_crc;
     }
-    
-    CrcDispatchPolicy policy = static_cast<CrcDispatchPolicy>(s_dispatch_policy.load(std::memory_order_relaxed));
+
+    CrcDispatchPolicy policy =
+        static_cast<CrcDispatchPolicy>(s_dispatch_policy.load(std::memory_order_relaxed));
     if (policy == CrcDispatchPolicy::ForceSoftware) {
         return compute_sw(init_crc, data, length);
     }
@@ -203,18 +207,50 @@ u32 Crc32C::compute(u32 init_crc, const byte* data, usize length) noexcept {
     return compute_sw(init_crc, data, length);
 }
 
-u32 Crc32C::compute(const byte* data, usize length) noexcept {
-    return compute(0, data, length);
-}
+u32 Crc32C::compute(const byte *data, usize length) noexcept { return compute(0, data, length); }
 
 u32 Crc32C::combine(u32 crc_a, u32 crc_b, usize len_b) noexcept {
-    if (len_b == 0) return crc_a;
-    u32 result = crc_a;
-    for (usize i = 0; i < len_b; ++i) {
-        result = (result >> 8) ^ kCrc32cTable.table[result & 0xFF];
+    if (len_b == 0)
+        return crc_a;
+    auto times = [](const std::array<u32, 32> &matrix, u32 vector) {
+        u32 sum = 0;
+        usize i = 0;
+        while (vector) {
+            if (vector & 1)
+                sum ^= matrix[i];
+            vector >>= 1;
+            ++i;
+        }
+        return sum;
+    };
+    auto square = [&](const std::array<u32, 32> &matrix) {
+        std::array<u32, 32> out{};
+        for (usize i = 0; i < 32; ++i)
+            out[i] = times(matrix, matrix[i]);
+        return out;
+    };
+    std::array<u32, 32> odd{};
+    odd[0] = 0x82F63B78U;
+    u32 row = 1;
+    for (usize i = 1; i < 32; ++i) {
+        odd[i] = row;
+        row <<= 1;
     }
-    result ^= crc_b;
-    return result;
+    auto even = square(odd);
+    odd = square(even);
+    do {
+        even = square(odd);
+        if (len_b & 1)
+            crc_a = times(even, crc_a);
+        len_b >>= 1;
+        if (!len_b)
+            break;
+        odd = square(even);
+        if (len_b & 1)
+            crc_a = times(odd, crc_a);
+        len_b >>= 1;
+    } while (len_b);
+    return crc_a ^ crc_b;
 }
 
 } // namespace vectortick

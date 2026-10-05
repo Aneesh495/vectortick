@@ -160,6 +160,7 @@ add_vt_executable(vectortick_demo apps/vectortick_demo.cpp)
 enable_testing()
 
 file(GLOB_RECURSE VT_TEST_SOURCES tests/*.cpp)
+list(FILTER VT_TEST_SOURCES EXCLUDE REGEX "/campaign/")
 add_executable(vectortick_tests ${VT_TEST_SOURCES})
 target_link_libraries(vectortick_tests PRIVATE vectortick)
 target_include_directories(vectortick_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
@@ -168,6 +169,7 @@ set_sanitizer_flags(vectortick_tests)
 
 set(VT_TEST_SUITES
     types_tests
+    crc_concurrency_tests
     checked_arithmetic_tests
     protocol_tests
     pcap_tests
@@ -181,6 +183,7 @@ set(VT_TEST_SUITES
     x86_encoder_tests
     aarch64_encoder_tests
     jit_differential_tests
+    repair_regression_tests
     recovery_tests
     cli_integration_tests
     fuzz_smoke_tests
@@ -190,6 +193,15 @@ foreach(SUITE ${VT_TEST_SUITES})
     add_test(NAME ${SUITE} COMMAND vectortick_tests --suite=${SUITE})
 endforeach()
 add_test(NAME all_tests COMMAND vectortick_tests)
+
+# Full native differential campaign, with host checks and recorded actual counts.
+add_vt_executable(vectortick_native_campaign tests/campaign/native_campaign.cpp)
+add_test(NAME native_campaign COMMAND vectortick_native_campaign --require-arch ${VT_ARCH_STRING} --json native-campaign.json)
+
+add_vt_executable(vectortick_sql_campaign tests/campaign/sql_campaign.cpp)
+add_test(NAME sql_campaign COMMAND vectortick_sql_campaign --json sql-campaign.json)
+
+add_vt_executable(vectortick_verification_bench tests/campaign/verification_bench.cpp)
 
 # Benchmarks
 file(GLOB_RECURSE VT_BENCH_SOURCES bench/*.cpp)

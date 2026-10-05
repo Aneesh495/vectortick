@@ -101,12 +101,19 @@ Result<vts1::ColumnType> TypeChecker::check_expression(const Expression *expr) c
         case TokenType::Pipe:
         case TokenType::Caret:
             return vts1::ColumnType::U64;
-        default:
+        case TokenType::Plus:
+        case TokenType::Minus:
+        case TokenType::Star:
+        case TokenType::Slash:
+        case TokenType::Percent:
             if (left_res.value() == vts1::ColumnType::I64 ||
                 right_res.value() == vts1::ColumnType::I64) {
                 return vts1::ColumnType::I64;
             }
             return vts1::ColumnType::U64;
+        default:
+            return make_error<vts1::ColumnType>(StatusCode::NotImplemented,
+                                                "Unsupported binary operator");
         }
     }
 
@@ -121,7 +128,8 @@ Result<vts1::ColumnType> TypeChecker::check_expression(const Expression *expr) c
         } else if (unop->op == TokenType::Minus) {
             return vts1::ColumnType::I64;
         }
-        return operand_res;
+        return make_error<vts1::ColumnType>(StatusCode::NotImplemented,
+                                            "Unsupported unary operator");
     }
 
     case ExprType::FunctionCall: {

@@ -30,9 +30,9 @@ void ReplayEngine::process_event(const CanonicalEvent& ev, EventCallback callbac
         if (ev.sequence > stats_.max_sequence) stats_.max_sequence = ev.sequence;
 
         if (options_.verify_sequence) {
-            if (ev.sequence < last_sequence_) {
+            if (ev.sequence <= last_sequence_) {
                 stats_.out_of_order_events++;
-            } else if (ev.sequence > last_sequence_ + 1) {
+            } else if (ev.sequence > last_sequence_ && ev.sequence - last_sequence_ > 1) {
                 stats_.sequence_breaks++;
             }
         }
@@ -66,6 +66,7 @@ Status ReplayEngine::replay_events(const std::vector<CanonicalEvent>& events,
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
+    const u64 initial_count = stats_.total_events;
     const u64 rate = options_.rate_limit_events_per_sec;
     const u64 batch_size = rate > 0 ? std::max<u64>(1, rate / 100) : 1000;
     u64 batch_count = 0;
@@ -77,7 +78,7 @@ Status ReplayEngine::replay_events(const std::vector<CanonicalEvent>& events,
         if (rate > 0 && batch_count >= batch_size) {
             auto now = std::chrono::high_resolution_clock::now();
             double elapsed_sec = std::chrono::duration<double>(now - start_time).count();
-            double expected_sec = static_cast<double>(stats_.total_events) / static_cast<double>(rate);
+            double expected_sec = static_cast<double>(stats_.total_events - initial_count) / static_cast<double>(rate);
 
             if (expected_sec > elapsed_sec) {
                 auto sleep_duration = std::chrono::duration<double>(expected_sec - elapsed_sec);
@@ -88,7 +89,7 @@ Status ReplayEngine::replay_events(const std::vector<CanonicalEvent>& events,
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();
-    stats_.elapsed_wall_ns = static_cast<u64>(
+    stats_.elapsed_wall_ns += static_cast<u64>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count());
 
     double elapsed_sec = static_cast<double>(stats_.elapsed_wall_ns) / 1e9;

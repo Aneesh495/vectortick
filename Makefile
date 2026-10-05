@@ -69,11 +69,8 @@ dataset: build
 
 # Benchmark
 .PHONY: benchmark
-benchmark: build
-	@echo "Running benchmarks..."
-	@mkdir -p results/verified
-	$(BUILD_DIR)/bin/vectortick_bench --json results/verified/BENCHMARKS.json
-	python3 tools/make_reports.py
+benchmark:
+	python3 tools/run_verification.py --build $(BUILD_DIR) --output results/verified/local
 
 # Profile
 .PHONY: profile
@@ -95,45 +92,11 @@ stress: build
 # Acceptance
 .PHONY: acceptance
 acceptance:
-	@echo "=== VectorTick Acceptance ==="
-	@echo ""
-	@echo "1. Building release..."
-	$(MAKE) clean
-	$(MAKE) build BUILD_TYPE=Release
-	@echo ""
-	@echo "2. Running tests..."
-	$(MAKE) test
-	@echo ""
-	@echo "3. Running sanitizers..."
-	$(MAKE) sanitize
-	@echo ""
-	@echo "4. Running fuzz smoke..."
-	$(MAKE) fuzz-smoke
-	@echo ""
-	@echo "5. Running demo..."
-	$(MAKE) demo
-	@echo ""
-	@echo "6. Generating dataset..."
-	$(MAKE) dataset
-	@echo ""
-	@echo "7. Running benchmarks..."
-	$(MAKE) benchmark
-	@echo ""
-	@echo "8. Running stress..."
-	$(MAKE) stress
-	@echo ""
-	@echo "9. Counting LOC..."
-	$(MAKE) loc
-	@echo ""
-	@echo "=== Acceptance Complete ==="
+	python3 tools/run_verification.py --build build-final --output results/verified/local --job-name local-aarch64-release
+	python3 tools/run_verification.py --build build-san-final --build-type Debug --sanitizers --output results/verified/local-san --job-name local-aarch64-sanitizers
 
-# Verify
 .PHONY: verify
 verify:
-	@echo "Verifying evidence bundle..."
-	@if [ ! -f results/verified/ACCEPTANCE.json ]; then \
-		echo "ERROR: No acceptance evidence found"; exit 1; \
-	fi
 	python3 tools/make_reports.py --verify-only
 
 # LOC

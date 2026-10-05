@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 
 #include "../common/types.hpp"
 #include <atomic>

@@ -34,6 +34,7 @@ public:
     // Get segment info
     [[nodiscard]] bool is_open() const noexcept { return mapping_.is_open(); }
     [[nodiscard]] usize row_count() const noexcept { return row_count_; }
+    [[nodiscard]] usize file_size() const noexcept { return file_size_; }
     [[nodiscard]] u64 segment_id() const noexcept { return segment_id_; }
     [[nodiscard]] u64 min_timestamp() const noexcept { return min_timestamp_; }
     [[nodiscard]] u64 max_timestamp() const noexcept { return max_timestamp_; }

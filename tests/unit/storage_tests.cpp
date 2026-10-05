@@ -204,10 +204,9 @@ VT_TEST(storage_tests, corruption_detection) {
         
         SegmentReader r;
         auto st = r.open(test_path);
-        VT_ASSERT(st.ok()); // open succeeds, validate checks column data CRC
-        auto val_st = r.validate();
-        VT_ASSERT(!val_st.ok());
-        VT_ASSERT(val_st.code() == StatusCode::SegmentChecksumFailed);
+        VT_ASSERT(!st.ok());
+        VT_ASSERT(st.code() == StatusCode::SegmentChecksumFailed);
+        VT_ASSERT(!r.is_open());
         r.close();
         remove(test_path.c_str());
     }

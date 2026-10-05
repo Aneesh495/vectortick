@@ -262,8 +262,13 @@ Result<std::vector<u8>> A64CodeGenerator::generate(const ir::Function *fn) noexc
     a.str_x64(x, A64Reg::X20, 0);
     a.mov_x64_imm64(A64Reg::X0, 0);
     epilogue();
-    for (auto p : errors)
+    for (auto p : errors) {
+        auto delta = static_cast<i64>(error_label) - static_cast<i64>(p);
+        if (delta < -(i64{1} << 18) || delta >= (i64{1} << 18))
+            return make_error<std::vector<u8>>(StatusCode::InvalidArgument,
+                                               "Native error branch is too far");
         patch(p, error_label);
+    }
     for (auto [p, b] : jumps) {
         auto delta = static_cast<i64>(labels.at(b)) - static_cast<i64>(p);
         if (delta < -(i64{1} << 25) || delta >= (i64{1} << 25))
