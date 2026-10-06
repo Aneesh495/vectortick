@@ -1,0 +1,15 @@
+{
+  "files": {
+    "README.md": "e8dc92e710f6b7ae883117c27452e42a4817267fa62d296699f422ea65033777",
+    "docs/ARCHITECTURE.md": "b325c0af4e764b98a574daa0177b94667859a1bd6ed91416e8310d19279e30ff",
+    "docs/BUILD_SPEC.md": "6c6d41c05a6778cca1b248a991acc7c9fcec24a9a6ed55f2535849c46fbd2c71",
+    "docs/REPAIR_STATUS.md": "4f774cad97d7148a9312d7788eb055a2ce51bbb557963b192256b3de86200613",
+    "docs/adr/001-columnar-storage.md": "6f1d98c0aaa281f9d982721edd5f1bb50616838c22d78ae3942536bc33d6ae34",
+    "docs/adr/002-custom-jit.md": "7fa296de770c600c2d1cb0f65d1d6ad8af252cb278c8fd425900e88f91eb32ca",
+    "docs/adr/003-ssa-ir.md": "6df64a6393ff5f546e40892d5790e05d797a8dda1edd924ebaa79a7aa640719a",
+    "docs/adr/004-custom-protocol.md": "49c51965a5e9abfaef8d1a687826a9a6cc0d70a83932c2f38eff7641333daaeb",
+    "docs/adr/005-no-exceptions.md": "a6dc38b504fb8cdee4a3c7aede5931297638e015bb7fd315c1db5087f9ada863",
+    "docs/adr/README.md": "b802924e7046dd3f6cdb0994fd65513a5e0eae834c7c62f7301c83268b0ef26e"
+  },
+  "starting_revision": "976fc49d9dda2c788b149910f96b8eaad0a210cd"
+}

@@ -1,0 +1,42 @@
+{
+  "artifact_manifest": {
+    "BENCHMARKS.json": "2c445fa69f2cb27b6df92ce0bd2747f30d802b4f7d4cddcdd7c1ade5c5f0baee",
+    "DOCUMENT_BYTES.json": "780b9a28ffc394c5de1bf4e023f3028e63d1ba8e29b16f091d16bd9e84042742",
+    "HOSTED_CI.json": "f16c3befa43f44e088d1e68faafb55d8d88d7af35e509fec0105d859e1080e88",
+    "NEGATIVE_TESTS.json": "339afccb4913ddb87b79cd017a2d6ffd3d57682ca492f31c8b4ac3ae9b185a14",
+    "SOURCE_MANIFEST.json": "743db813a8e0508dcba40a9ea08925baf87b5db6e41bdf9263feba0fb8cbfa84",
+    "jobs/local-aarch64-release.tar.gz": "2efdb310e8cfcad26146e88c2764769535bc3af66386c61cac362543d0f8f5ab",
+    "jobs/local-aarch64-sanitizers.tar.gz": "1c973a6ad05d01abdf9f916792e424bf8bc3be129b7975bd26ea7b08c257b3b3",
+    "jobs/macos-15-clang-Debug.tar.gz": "6b6b1d87689cb6f499311c2999b948837ec8de4895a17dca54e28ee121a9e9fa",
+    "jobs/macos-15-clang-Release.tar.gz": "8b2827c5cc2153058438b2d0dbef5e5dd006cb54295d03d93f1717eada821a64",
+    "jobs/ubuntu-24.04-arm-clang-Debug.tar.gz": "cd377a65431029f33dbc6b5aaacc7d62cc2903a31677679388d9b5618876f022",
+    "jobs/ubuntu-24.04-arm-clang-Release.tar.gz": "61fcb3a097386e61791c309ca66f166a823fc091c72e35dc704ad2890a726366",
+    "jobs/ubuntu-24.04-arm-gcc-Debug.tar.gz": "fda5c6fd900b40ea928fc8e2d2ebc79d0fc08ed46497fb15b90792ba6eb25678",
+    "jobs/ubuntu-24.04-arm-gcc-Release.tar.gz": "979d5718a5abf7ca1f48a0d9d3a4ef8a7c3a852b335ce1189f60cb24493d8b2c",
+    "jobs/ubuntu-24.04-clang-Debug.tar.gz": "9953cc73cc3a94bbaa10143530ff8b02923f655ca8c70e13f7be7acfb59632b1",
+    "jobs/ubuntu-24.04-clang-Release.tar.gz": "468616449cdffb87008d251d0263408bef4cb9b60575b9c86272eb1779473494",
+    "jobs/ubuntu-24.04-clang-sanitizers.tar.gz": "77ee28578bce994bc22e1a2223767f90a6335b6e67cc840e8f4ab758e0ec0172",
+    "jobs/ubuntu-24.04-clang-tsan.tar.gz": "d75b436505cec7ad40ef766747258df888334489926bde4c568ab36299ccf99e",
+    "jobs/ubuntu-24.04-gcc-Debug.tar.gz": "604c1ebe604f6b7af58f02e17256bd2377aed7c2e951b83f3cfd9af32f45f317",
+    "jobs/ubuntu-24.04-gcc-Release.tar.gz": "cc56f65d9ccd017764d49e58d3de6a5b8485b5df5e27f97da32bb2a02822cefd"
+  },
+  "implementation_revision": "da88e01893f9ac61410f470e0a5e1661eeed2976",
+  "jobs": [
+    "local-aarch64-release",
+    "local-aarch64-sanitizers",
+    "ubuntu-24.04-clang-tsan",
+    "ubuntu-24.04-gcc-Debug",
+    "ubuntu-24.04-clang-Debug",
+    "ubuntu-24.04-arm-clang-Debug",
+    "ubuntu-24.04-clang-Release",
+    "macos-15-clang-Release",
+    "ubuntu-24.04-arm-gcc-Release",
+    "ubuntu-24.04-arm-clang-Release",
+    "macos-15-clang-Debug",
+    "ubuntu-24.04-gcc-Release",
+    "ubuntu-24.04-arm-gcc-Debug",
+    "ubuntu-24.04-clang-sanitizers"
+  ],
+  "schema": 2,
+  "status": "PASSED"
+}
