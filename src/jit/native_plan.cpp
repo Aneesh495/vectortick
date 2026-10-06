@@ -118,8 +118,12 @@ Result<NativePlan> plan_native(const ir::Function *fn, usize registers) noexcept
                     if (!defs.count(operand))
                         return error("Undefined or non-dominating native value");
             }
-            for (auto operand : in->operands())
+            for (auto operand : in->operands()) {
+                if (!fn->parameters().empty() && operand == fn->parameters()[0] &&
+                    op != Opcode::LoadColumn)
+                    return error("Native context is only valid as a field-load base");
                 last[operand] = pc;
+            }
             if (op == Opcode::LoadColumn) {
                 auto load = static_cast<const LoadColumnOp *>(in);
                 if (load->column_id() >= 12 || fn->parameters().empty() ||
@@ -129,6 +133,9 @@ Result<NativePlan> plan_native(const ir::Function *fn, usize registers) noexcept
             if (in->has_result()) {
                 if (!fn->value(in->result()) || !definitions.insert(in->result()).second)
                     return error("Duplicate or invalid SSA result");
+                if ((in->result_type() < Type::I1 || in->result_type() > Type::U64) ||
+                    fn->value(in->result())->type() != in->result_type())
+                    return error("Unsupported or inconsistent native result type");
                 defs.insert(in->result());
                 first[in->result()] = pc;
                 last.try_emplace(in->result(), pc);

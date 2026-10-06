@@ -72,7 +72,7 @@ void make_program(Builder &b, std::mt19937_64 &rng, u64 index) {
     switch (index % 6) {
     case 0: {
         std::vector<ValueId> live;
-        usize count = index % 30 == 0 ? 320 : 40 + static_cast<usize>(rng() % 40);
+        usize count = index % 30 == 0 ? 800 : 40 + static_cast<usize>(rng() % 40);
         for (usize k = 0; k < count; ++k)
             live.push_back(k % 2 ? load(static_cast<u32>(rng() % 12)) : b.create_const_u64(rng()));
         result = live[0];
