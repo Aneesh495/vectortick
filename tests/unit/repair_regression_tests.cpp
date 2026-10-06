@@ -392,3 +392,14 @@ VT_TEST(repair_regression_tests, native_rejects_vector_types_and_context_arithme
     for (auto arch : {jit::TargetArch::X86_64, jit::TargetArch::AArch64})
         VT_ASSERT(!jit::create_generator(arch)->generate(f).ok());
 }
+
+VT_TEST(repair_regression_tests, native_rejects_nop_that_defines_an_uninitialized_value) {
+    ir::Builder b;
+    auto f = b.create_function("invalid_nop");
+    auto value = f->create_value(ir::Type::U64);
+    f->entry_block()->append(std::make_unique<ir::Instruction>(
+        ir::Opcode::Nop, std::vector<ir::ValueId>{}, value, ir::Type::U64));
+    b.create_return(value);
+    for (auto arch : {jit::TargetArch::X86_64, jit::TargetArch::AArch64})
+        VT_ASSERT(!jit::create_generator(arch)->generate(f).ok());
+}
