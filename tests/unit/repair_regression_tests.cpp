@@ -403,3 +403,30 @@ VT_TEST(repair_regression_tests, native_rejects_nop_that_defines_an_uninitialize
     for (auto arch : {jit::TargetArch::X86_64, jit::TargetArch::AArch64})
         VT_ASSERT(!jit::create_generator(arch)->generate(f).ok());
 }
+
+VT_TEST(repair_regression_tests, error_messages_own_temporary_and_mutated_strings) {
+    Status status;
+    {
+        std::string text = "long diagnostic that must survive its source string being destroyed";
+        status = Status(StatusCode::InvalidArgument, text);
+        text.assign(1000, 'x');
+    }
+    Status copy = status;
+    Status moved = std::move(status);
+    VT_ASSERT_EQ(std::string(copy.message()),
+                 "long diagnostic that must survive its source string being destroyed");
+    VT_ASSERT_EQ(std::string(moved.message()), std::string(copy.message()));
+    auto error =
+        make_error<u64>(StatusCode::InvalidArgument,
+                        std::string("temporary diagnostic with sufficient length to allocate"));
+    auto view = error.status().message();
+    VT_ASSERT_EQ(std::string(view), "temporary diagnostic with sufficient length to allocate");
+    query::Parser parser("SELECT missing FROM events");
+    auto query = parser.parse_query();
+    VT_ASSERT(query.ok());
+    for (auto engine : {QueryEngine::Reference, QueryEngine::Vector, QueryEngine::Native}) {
+        auto result = execute_query({}, query.value().get(), engine);
+        VT_ASSERT(!result.ok());
+        VT_ASSERT_EQ(std::string(result.status().message()), "Unknown column reference: missing");
+    }
+}

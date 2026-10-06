@@ -16,7 +16,7 @@ public:
     Result(T value) : data_(std::move(value)) {}  // NOLINT: allow implicit conversion
     
     // Construct from Status (error case)
-    Result(Status status) : data_(status) {  // NOLINT: allow implicit conversion
+    Result(Status status) : data_(std::move(status)) {  // NOLINT: allow implicit conversion
         // Status must be an error
         if (status.ok()) {
             data_ = T{};  // Default construct if given OK status
@@ -47,7 +47,7 @@ public:
     }
     
     // Get the status (undefined behavior if ok)
-    [[nodiscard]] Status status() const noexcept {
+    [[nodiscard]] const Status& status() const noexcept {
         return std::get<Status>(data_);
     }
     
@@ -100,7 +100,7 @@ public:
     Result() : status_(StatusCode::OK) {}
     
     // Construct from status
-    Result(Status status) : status_(status) {}  // NOLINT: allow implicit conversion
+    Result(Status status) : status_(std::move(status)) {}  // NOLINT: allow implicit conversion
     
     // Check if OK
     [[nodiscard]] bool ok() const noexcept {
@@ -108,7 +108,7 @@ public:
     }
     
     // Get the status
-    [[nodiscard]] Status status() const noexcept {
+    [[nodiscard]] const Status& status() const noexcept {
         return status_;
     }
     

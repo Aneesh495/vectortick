@@ -3,6 +3,7 @@
 #include "types.hpp"
 #include <system_error>
 #include <string_view>
+#include <string>
 
 namespace vectortick {
 
@@ -184,7 +185,7 @@ public:
 
 private:
     StatusCode code_;
-    std::string_view message_;
+    std::string message_;
 };
 
 // Macro for checking status and returning on error
