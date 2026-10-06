@@ -20,13 +20,15 @@ def validate_job(files,manifest,revision):
  else:required|={'ctest','empty-filter','native-campaign','sql-campaign','demo','demo-default','generate-pcap','benchmark'}|{'invalid-'+str(i) for i in range(7)}|{'pcap-short-header','pcap-short-packet','pcap-excessive-snaplen','pcap-inconsistent-packet','vtp-checksum'}
  require(required<=set(commands),'Missing required commands')
  for r in job['commands']:
-  require(r['log'] in files and files[r['log']],'Missing raw command log');require(r['wall_ns']>0,'Invalid command timing');require(r['exit_code']==r['expected_exit'] or r['expected_exit']=='nonzero' and r['exit_code']!=0,'Failed required command')
+  require(r['log'] in files and files[r['log']],'Missing raw command log');require(r['wall_ns']>0,'Invalid command timing');require(r['exit_code']==r['expected_exit'] or r['expected_exit']=='nonzero' and r['exit_code']==1,'Failed required command')
  compile=data('compile_commands.json');require(compile and all('command' in c for c in compile),'Missing compiler flags')
  for c in compile:
   flags=c['command'];require('-march=native' not in flags,'Nonportable compiler baseline')
   if job['sanitizers']:require('-fsanitize=address' in flags and '-fsanitize=undefined' in flags,'Missing sanitizer flags')
   if job['tsan']:require('-fsanitize=thread' in flags,'Missing TSan flags')
  cases_text=files[commands['test-cases']['log']].decode();require(len(re.findall(r'  [a-z_0-9]+::',cases_text))>=80,'Missing actual test discovery')
+ for r in job['commands']:
+  text=files[r['log']].decode();require(not any(marker in text for marker in ('ERROR: AddressSanitizer','runtime error:','WARNING: ThreadSanitizer','LeakSanitizer: detected')),'Sanitizer diagnostic in '+r['name'])
  headers=data('headers.json');require(headers['headers_checked']>=50 and headers['failures']==0 and all(r['exit_code']==0 for r in headers['results']),'Header checks failed')
  if job['tsan']:
   text=files[commands['crc-tsan']['log']].decode();require(re.search(r'0 failed, [1-9][0-9]* total run',text),'TSan skipped CRC tests');require('WARNING: ThreadSanitizer' not in text,'TSan race');return job
