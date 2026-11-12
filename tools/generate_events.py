@@ -5,6 +5,8 @@ import struct
 import sys
 
 def generate_events(count, output_path):
+    if count < 0:
+        raise ValueError("event count must be non-negative")
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     is_pcap = output_path.endswith(".pcap")
     
@@ -81,6 +83,8 @@ def main():
     parser.add_argument("--count", type=int, default=10000, help="Number of events to generate")
     parser.add_argument("--output", type=str, required=True, help="Output path (.bin or .pcap)")
     args = parser.parse_args()
+    if args.count < 0:
+        parser.error("--count must be non-negative")
     generate_events(args.count, args.output)
 
 if __name__ == "__main__":
