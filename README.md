@@ -21,7 +21,7 @@ It features wire-speed PCAP ingestion, durable VTS1 columnar segments with hardw
   - **Portable Vectorized Executor**: Cache-conscious 1024-row chunked executor with runtime SIMD dispatch (ARM NEON & x86 AVX2).
   - **Host JIT Compiler**: Native machine code emission for Apple Silicon AArch64 and x86-64 with strict $W \oplus X$ policy and macOS `MAP_JIT` write protection.
 - **Deterministic Market Replay**: Sequence monotonicity verification, microsecond pacing, and line-rate replay (>220 million events/sec).
-- **Hardened Verification**: 18 CTest suites, 67 unit/integration tests, fuzz targets with smoke testing, and 100% clean AddressSanitizer and UndefinedBehaviorSanitizer passes.
+- **Verification**: Unit and integration suites, native and SQL campaigns, fuzz smoke tests, and AddressSanitizer and UndefinedBehaviorSanitizer gates.
 
 ---
 
@@ -84,7 +84,7 @@ The following metrics were measured on an Apple Silicon host (`Darwin arm64`, Ap
 
 ## CLI Applications
 
-VectorTick provides five standalone command-line utilities:
+VectorTick includes command-line applications and a benchmark:
 
 ### 1. `vectortick_demo`
 Runs a complete end-to-end pipeline demonstration:
@@ -122,8 +122,12 @@ Replays a segment file deterministically with rate limiting and monotonicity che
 ### 5. `vectortick_ingest`
 Ingests PCAP captures into durable VTS1 segments:
 ```bash
+python3 tools/generate_events.py --count 1000 --output input.pcap
 ./build/bin/vectortick_ingest input.pcap output.vts
+./build/bin/vectortick_query output.vts "SELECT COUNT(*)"
 ```
+
+This synthetic capture produces a segment with 1,000 events.
 
 ### 6. `vectortick_bench`
 Executes the comprehensive benchmark suite and outputs JSON performance data:
@@ -137,15 +141,16 @@ Executes the comprehensive benchmark suite and outputs JSON performance data:
 
 ### Prerequisites
 - C++20 compliant compiler (`AppleClang 15+`, `Clang 16+`, or `GCC 13+`)
-- CMake 3.20+
+- CMake 3.24+
 - Ninja or Make
+- Python 3 for the capture generator and verification tools
 
 ### Quick Start
 ```bash
 # Configure and build Release
 make build BUILD_TYPE=Release
 
-# Run the 18 CTest suites in parallel
+# Run the configured CTest suites in parallel
 make test
 
 # Run end-to-end demo
