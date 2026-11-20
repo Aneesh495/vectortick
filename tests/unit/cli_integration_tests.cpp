@@ -94,6 +94,31 @@ std::string unique_test_path(const std::string& prefix, const std::string& ext) 
 
 } // namespace
 
+VT_TEST(cli_integration_tests, ingest_output_arguments) {
+    const std::string ingest = find_bin("vectortick_ingest");
+    const std::string input = unique_test_path("ingest_missing", ".pcap");
+    const std::string output = unique_test_path("ingest_output", ".vts");
+    int code = 0;
+
+    auto result = exec_cmd(ingest + " -v " + input + " " + output, code);
+    VT_ASSERT_EQ(code, 1);
+    VT_ASSERT(result.find("Input: " + input) != std::string::npos);
+    VT_ASSERT(result.find("Output: " + output) != std::string::npos);
+
+    result = exec_cmd(ingest + " -v -o " + output + " " + input, code);
+    VT_ASSERT_EQ(code, 1);
+    VT_ASSERT(result.find("Input: " + input) != std::string::npos);
+    VT_ASSERT(result.find("Output: " + output) != std::string::npos);
+
+    result = exec_cmd(ingest + " -o " + output + " " + input + " " + output, code);
+    VT_ASSERT_EQ(code, 1);
+    VT_ASSERT(result.find("Specify the output path") != std::string::npos);
+
+    result = exec_cmd(ingest + " " + input + " " + output + " extra.vts", code);
+    VT_ASSERT_EQ(code, 1);
+    VT_ASSERT(result.find("Too many positional arguments") != std::string::npos);
+}
+
 VT_TEST(cli_integration_tests, inspect_schema_and_metadata) {
     std::string seg_file = unique_test_path("test_cli_inspect", ".vts");
     std::error_code ec;
