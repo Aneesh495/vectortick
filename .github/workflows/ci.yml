@@ -35,6 +35,14 @@ jobs:
         shell: bash
         run: |
           python3 tools/run_verification.py --build build-ci --build-type '${{ matrix.build_type }}' --compiler "$CXX" --output results/verified/job --job-name '${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}'
+      - name: Round trip a generated PCAP
+        shell: bash
+        run: |
+          capture_dir=$(mktemp -d)
+          python3 tools/generate_events.py --count 10 --output "$capture_dir/input.pcap"
+          build-ci/bin/vectortick_ingest -o "$capture_dir/output.vts" "$capture_dir/input.pcap"
+          build-ci/bin/vectortick_query --json "$capture_dir/output.vts" 'SELECT COUNT(*)' |
+            python3 -c 'import json, sys; assert json.load(sys.stdin)["rows"] == [["10"]]'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

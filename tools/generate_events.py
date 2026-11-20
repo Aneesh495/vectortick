@@ -4,6 +4,27 @@ import os
 import struct
 import sys
 
+
+def _make_crc32c_table():
+    table = []
+    for byte in range(256):
+        crc = byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ (0x82F63B78 if crc & 1 else 0)
+        table.append(crc)
+    return table
+
+
+_CRC32C_TABLE = _make_crc32c_table()
+
+
+def _crc32c(data):
+    crc = 0xFFFFFFFF
+    for byte in data:
+        crc = (crc >> 8) ^ _CRC32C_TABLE[(crc ^ byte) & 0xFF]
+    return crc ^ 0xFFFFFFFF
+
+
 def generate_events(count, output_path):
     if count < 0:
         raise ValueError("event count must be non-negative")
@@ -51,13 +72,15 @@ def generate_events(count, output_path):
                     version = 1
                     msg_type = event_type
                     p_flags = 0
-                    if msg_type == 2: # Trade payload: 32 bytes
-                        payload = struct.pack(">QIIqIBBBB", ex_ts, inst_id, side, price, qty, 0, 0, 0, 0)
+                    if msg_type == 2: # Trade payload: 40 bytes
+                        payload = struct.pack(">QIB3xqIQHH", ex_ts, inst_id, side, price, qty, trade_id, venue, source)
                     else: # Quote payload: 40 bytes
                         payload = struct.pack(">QIB3sqIqI", ex_ts, inst_id, side, b"\x00\x00\x00", price, qty, price + 5, qty + 2)
                     payload_len = len(payload)
                     frame_hdr = struct.pack(">4sBBHIIQQII", magic, version, msg_type, p_flags, payload_len, 1, seq, ex_ts, 0, 0)
-                    udp_payload = frame_hdr + payload
+                    udp_payload = bytearray(frame_hdr + payload)
+                    # The frame checksum covers the header with its checksum field zeroed.
+                    struct.pack_into(">I", udp_payload, 32, _crc32c(udp_payload))
                     udp_hdr = struct.pack(">HHHH", 12345, 12345, 8 + len(udp_payload), 0)
                     ip_len = 20 + len(udp_hdr) + len(udp_payload)
                     ip_hdr = struct.pack(">BBHHHBBHII", 0x45, 0, ip_len, 0, 0, 64, 17, 0, 0x7f000001, 0x7f000001)
