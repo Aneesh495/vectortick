@@ -20,7 +20,7 @@ jobs:
           - os: macos-15
             compiler: gcc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Select compiler
@@ -59,7 +59,7 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Execute ASan and UBSan gates
@@ -79,7 +79,7 @@ jobs:
     env:
       TSAN_OPTIONS: halt_on_error=1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Configure compatible TSan address space
