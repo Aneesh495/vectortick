@@ -43,7 +43,7 @@ jobs:
           build-ci/bin/vectortick_ingest -o "$capture_dir/output.vts" "$capture_dir/input.pcap"
           build-ci/bin/vectortick_query --json "$capture_dir/output.vts" 'SELECT COUNT(*)' |
             python3 -c 'import json, sys; assert json.load(sys.stdin)["rows"] == [["10"]]'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: verification-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}
@@ -64,7 +64,7 @@ jobs:
           fetch-depth: 0
       - name: Execute ASan and UBSan gates
         run: python3 tools/run_verification.py --build build-san-ci --build-type Debug --compiler clang++ --sanitizers --output results/verified/job --job-name ubuntu-24.04-clang-sanitizers
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: verification-ubuntu-24.04-clang-sanitizers
@@ -86,7 +86,7 @@ jobs:
         run: sudo sysctl vm.mmap_rnd_bits=28
       - name: Execute concurrent CRC under TSan
         run: python3 tools/run_verification.py --build build-tsan-ci --build-type Debug --compiler clang++ --tsan --output results/verified/job --job-name ubuntu-24.04-clang-tsan
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: verification-ubuntu-24.04-clang-tsan
